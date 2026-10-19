@@ -9,15 +9,18 @@ API local Hono. **No es un sistema habilitado para atención clínica.**
 - La API guarda datos y sesiones **solo en la memoria de un proceso local**.
 - Reiniciar el servidor restaura los ejemplos y elimina todos los cambios.
 - No se usa `localStorage` para sesiones o registros clínicos.
-- No hay D1, R2, recursos Cloudflare ni cuenta Meta provisionados.
+- No hay D1, R2, recursos Cloudflare provisionados ni cuenta Meta. Existe el
+  esquema SQL local (`db/migrations`, ver `PERSISTENCIA.md`) con sus pruebas,
+  pero la aplicación todavía no lo usa ni hay nada desplegado.
 - No hay contraseñas, MFA, recuperación ni verificación real de contactos.
 - La entrada profesional demo y el buzón simulado son herramientas de prueba,
   no mecanismos de autenticación utilizables en producción.
 - No se adjuntan archivos reales. El Word es una referencia visual; el PDF se
   genera como ejemplo sintético con la leyenda «Sin validez médica».
-- Enmiendas, retiro manual de publicaciones, auditoría de producción y respaldos
-  siguen pendientes. Las indicaciones sí admiten reemplazos versionados con
-  historial; los registros clínicos finalizados rechazan sobrescrituras.
+- Las indicaciones admiten reemplazos versionados con historial y las consultas
+  finalizadas no se sobrescriben: se corrigen con enmiendas trazables que
+  conservan la versión anterior. Retiro manual de publicaciones, auditoría de
+  producción, adaptadores de persistencia y respaldos siguen pendientes.
 
 Usar únicamente información inventada, incluso al crear fichas o consultas.
 
@@ -177,10 +180,11 @@ npm run build
 
 ### Verificación del prototipo actualizado
 
-- 49 pruebas de API y reglas aprobadas con Vitest: estadísticas, coberturas,
+- 63 pruebas aprobadas con Vitest: 49 de API y reglas (estadísticas, coberturas,
   sesiones, versión esperada, reemplazos concurrentes, historial, enmiendas de
   consultas finalizadas, general para nuevos pacientes, aislamiento y descargas
-  de indicaciones activas.
+  de indicaciones activas) y 14 que cargan la migración D1 en SQLite local para
+  comprobar invariantes y operaciones condicionales (ver `PERSISTENCIA.md`).
 - 12 recorridos aprobados con Chromium: los flujos previos más búsqueda de
   coberturas con teclado, publicación/reemplazo/descarga de general y específica,
   la enmienda de una consulta finalizada con su historial, y tres recorridos del
@@ -208,19 +212,21 @@ seguridad, disponibilidad o cumplimiento legal de un sistema productivo.
 - No hay script de despliegue ni configuración de infraestructura productiva.
 
 No eliminar estos bloqueos para publicar la demo. La siguiente etapa debe
-implementar autenticación profesional real, persistencia, permisos y archivos
-privados sobre los servicios acordados, y después validar la integración oficial
-de WhatsApp. Mantener los controles de `SEGURIDAD.md` como puertas de producción.
+implementar autenticación profesional real, los adaptadores de persistencia (el
+esquema ya está escrito), permisos y archivos privados sobre los servicios
+acordados, y después validar la integración oficial de WhatsApp. Mantener los
+controles de `SEGURIDAD.md` como puertas de producción.
 
 ## Organización actual
 
 ```text
+db/migrations/        esquema D1 revisado (SQL) y verificado con SQLite local
 scripts/              arranque local y comprobación del build
 src/shared/           contratos Zod y reglas temporales
 src/server/demo/      servidor y almacenamiento ficticios, solo local
 src/server/index.ts   entrada de producción cerrada
 src/web/              pantallas y estilos del prototipo
-tests/                pruebas de API y recorridos de navegador
+tests/                pruebas de API, recorridos de navegador y de persistencia
 ```
 
 ### Recursos de marca

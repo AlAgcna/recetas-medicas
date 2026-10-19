@@ -43,6 +43,7 @@ finalizadas y recetas **publicadas**; no recetas externas que no se hayan cargad
 | [Arquitectura](docs/ARQUITECTURA.md) | Tecnologías, componentes, modelo conceptual e integraciones |
 | [Seguridad](docs/SEGURIDAD.md) | Autenticación, sesiones, permisos, auditoría y condiciones para producción |
 | [Desarrollo local](docs/DESARROLLO.md) | Arranque, recorridos de prueba, limitaciones y comandos de verificación |
+| [Persistencia](docs/PERSISTENCIA.md) | Esquema D1, archivos en R2 y atomicidad; qué falta |
 | [Instrucciones del proyecto](AGENTS.md) | Reglas de trabajo para asistentes |
 | [Skill del proyecto](.opencode/skills/portal-clinico/SKILL.md) | Contexto y procedimiento reutilizable para desarrollar este sistema |
 

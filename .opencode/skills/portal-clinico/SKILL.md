@@ -20,6 +20,7 @@ Las rutas siguientes son relativas al directorio de esta skill:
 - `../../../docs/ARQUITECTURA.md`: componentes y modelo conceptual.
 - `../../../docs/SEGURIDAD.md`: controles, pruebas y condiciones de producción.
 - `../../../docs/DESARROLLO.md`: arranque, pruebas y límites del prototipo actual.
+- `../../../docs/PERSISTENCIA.md`: esquema D1, R2, atomicidad y lo que falta.
 
 Si aparece una instrucción nueva del usuario que modifica el producto,
 identificar qué acuerdo reemplaza y actualizar la documentación afectada sin
@@ -187,10 +188,14 @@ El diseño final reemplaza la propuesta inicial de envío manual:
 - El build muestra una pantalla cerrada y la entrada productiva devuelve 503.
   No quitar estos bloqueos para desplegar el prototipo.
 - Zod, Vitest y Playwright están instalados. El diseño usa CSS propio; Tailwind
-  y Drizzle no están instalados ni adoptados definitivamente.
-- Guardado de consultas manual; finalizadas no se sobrescriben. Hay reemplazos
-  versionados de indicaciones, con historial conservado y descargas revocadas.
-  Enmiendas, archivos reales, retiro manual sin reemplazo y persistencia siguen pendientes.
+  sigue propuesto. Drizzle se adoptó para la capa de acceso y se instalará con los
+  adaptadores; las migraciones D1 son SQL revisado a mano.
+- Guardado de consultas manual; finalizadas no se sobrescriben, se corrigen con
+  enmiendas trazables. Hay reemplazos versionados de indicaciones, con historial
+  conservado y descargas revocadas.
+- Existe el esquema D1 inicial (`db/migrations`, ver `PERSISTENCIA.md`) con sus
+  pruebas locales. Adaptadores, archivos reales, retiro manual sin reemplazo y
+  despliegue siguen pendientes.
 - Validar las pantallas con la médica antes de consolidar experiencia y formularios.
 - Códigos simulados solo en pruebas; producción debe rechazar esa configuración.
 - Validar Cloud API con recursos oficiales de Meta y destinatarios habilitados.

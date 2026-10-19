@@ -1,8 +1,9 @@
 # Arquitectura de partida
 
-Versión: 0.1 — 17 de octubre de 2026. Arquitectura objetivo. Existe un prototipo
-local con API en memoria; D1, R2, autenticación profesional real y Meta todavía
-no están implementados. Ver `DESARROLLO.md` para el estado actual.
+Versión: 0.2 — 19 de octubre de 2026. Arquitectura objetivo. Existe un prototipo
+local con API en memoria y el esquema D1 inicial en `db/migrations`; no hay
+recurso Cloudflare provisionado y R2, autenticación profesional real y Meta
+todavía no están implementados. Ver `DESARROLLO.md` y `PERSISTENCIA.md`.
 
 ## 1. Principios
 
@@ -53,7 +54,7 @@ públicos: su descarga pasa por autorización.
 | Estilos | Tailwind CSS, propuesto | Confirmar al construir el prototipo; priorizar accesibilidad |
 | Servidor | Hono sobre Cloudflare Workers | Validar compatibilidad de dependencias con el runtime |
 | Base de datos | Cloudflare D1 / SQLite | Índices, migraciones y operaciones atómicas verificadas |
-| Acceso a datos | Drizzle, propuesto | No asumir soporte transaccional idéntico a PostgreSQL |
+| Acceso a datos | Drizzle, adoptado para la capa de acceso | Se instala con los adaptadores; las migraciones son SQL revisado. D1 no expone transacciones interactivas: usar `batch()` |
 | Validación | Zod, propuesto | Validación obligatoria en el servidor |
 | Archivos | Cloudflare R2 privado | Sin acceso público permanente |
 | Autenticación | Biblioteca mantenida por seleccionar | Sesiones en servidor; MFA profesional y OTP al paciente |
@@ -63,8 +64,10 @@ públicos: su descarga pasa por autorización.
 
 El prototipo fija sus versiones en `package.json` y `package-lock.json` e
 implementa React, Vite, Hono, Zod, Vitest y Playwright. Se eligió CSS propio para
-esta primera experiencia; Tailwind y Drizzle siguen siendo propuestas, no
-dependencias instaladas. Los comandos actuales están en `DESARROLLO.md`.
+esta primera experiencia y Tailwind sigue siendo una propuesta. Drizzle se adoptó
+para la capa de acceso y se instalará junto con los adaptadores de persistencia,
+que todavía no existen; el esquema D1 inicial ya está escrito en `db/migrations`
+(ver `PERSISTENCIA.md`). Los comandos actuales están en `DESARROLLO.md`.
 
 ## 4. Fronteras de confianza
 
@@ -81,8 +84,12 @@ dependencias instaladas. Los comandos actuales están en `DESARROLLO.md`.
 
 ## 5. Modelo conceptual de datos
 
-No es un esquema definitivo. Se detallan responsabilidades antes de escribir
-migraciones.
+La primera migración ya está escrita y verificada:
+`db/migrations/0001_persistencia_inicial.sql` define las tablas, las
+restricciones y los índices parciales, y `tests/persistence.test.ts` prueba esos
+invariantes contra SQLite local. `PERSISTENCIA.md` detalla las decisiones, los
+patrones atómicos de D1, la disposición de R2 y lo que sigue pendiente. Lo que
+sigue no es un esquema definitivo: estas son las responsabilidades acordadas.
 
 | Entidad | Responsabilidad y restricciones |
 | --- | --- |
