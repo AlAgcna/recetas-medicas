@@ -1,9 +1,11 @@
-import { today, type MonthlyStatistics } from '../../shared/contracts';
-import { insuranceKey, insuranceLabel, isNamedInsurance } from '../../shared/insurance';
-import type { DemoStore } from './store';
+import { today, type Consultation, type MonthlyStatistics, type Publication } from '../shared/contracts';
+import { insuranceKey, insuranceLabel, isNamedInsurance } from '../shared/insurance';
 
-export function monthlyStatistics(store: DemoStore, month: string): MonthlyStatistics {
-  const consultations = [...store.consultations.values()].filter(consultation =>
+// Regla pura: recibe las colecciones y devuelve los agregados del mes. El
+// almacenamiento puede prefiltrar para no traer todo, pero el resultado no
+// depende de eso: acá se vuelve a aplicar la misma condición.
+export function monthlyStatistics(all: Consultation[], publications: Publication[], month: string): MonthlyStatistics {
+  const consultations = all.filter(consultation =>
     !consultation.supersededAt && consultation.status === 'finalized' && consultation.date.slice(0, 7) === month);
   const groups = new Map<string, { insurance: string; consultations: number; patients: Set<string> }>();
 
@@ -29,7 +31,7 @@ export function monthlyStatistics(store: DemoStore, month: string): MonthlyStati
     attendedPatients: new Set(consultations.map(consultation => consultation.patientId)).size,
     consultations: consultations.length,
     // Se cuentan PDF publicados, no recetas emitidas en una plataforma externa.
-    prescriptions: [...store.publications.values()].filter(publication =>
+    prescriptions: publications.filter(publication =>
       publication.kind === 'prescription' && today(publication.publishedAt).slice(0, 7) === month).length,
     insuranceBreakdown,
     leadingInsurances: namedInsurances.filter(row => row.consultations === leadingInsuranceConsultations).map(row => row.insurance),

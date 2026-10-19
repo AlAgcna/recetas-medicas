@@ -1,13 +1,8 @@
 import { today, type Consultation, type InternalDocument, type Patient, type Publication } from '../../shared/contracts';
-import type { StoredPdf } from './prescription-pdf';
+import type { AccessChallenge, AccessSession, AuditEvent } from '../storage/port';
 
-export type DemoSession = {
-  role: 'doctor' | 'patient'; patientId?: string; expiresAt: number;
-};
-export type Challenge = {
-  id: string; patientId: string; verifier: string; expiresAt: number; attempts: number; consumed: boolean;
-};
-
+// Estado del almacén en memoria. Es el banco de pruebas del prototipo local:
+// las pruebas de la API inicializan y consultan estas colecciones directamente.
 export function createStore(now: number) {
   const ana: Patient = {
     id: 'patient-ana-demo', dni: '00000001', firstName: 'Ana', lastName: 'Ejemplo',
@@ -37,13 +32,12 @@ export function createStore(now: number) {
       id: 'word-demo', patientId: ana.id, name: 'Antecedentes de ejemplo.docx',
       description: 'Referencia visual de un Word histórico. No hay un archivo real cargado.',
     }]]),
-    prescriptionFiles: new Map<string, StoredPdf>(),
-    sessions: new Map<string, DemoSession>(),
-    challenges: new Map<string, Challenge>(),
-    nextRequestAt: new Map<string, number>(),
+    files: new Map<string, Uint8Array<ArrayBuffer>>(),
+    sessions: new Map<string, AccessSession>(),
+    challenges: new Map<string, AccessChallenge>(),
+    codeRequests: new Map<string, number>(),
     inbox: new Map<string, { code: string; expiresAt: number }>(),
-    rateLimits: new Map<string, { count: number; expiresAt: number }>(),
-    audit: [] as { action: string; resource: string; at: number }[],
+    audit: [] as AuditEvent[],
   };
 }
 

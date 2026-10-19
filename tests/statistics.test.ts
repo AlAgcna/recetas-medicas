@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { monthlyStatistics } from '../src/server/demo/statistics';
+import { monthlyStatistics } from '../src/server/statistics';
 import { createStore } from '../src/server/demo/store';
 import type { Consultation, Publication } from '../src/shared/contracts';
+
+const monthly = (store: ReturnType<typeof createStore>, month: string) =>
+  monthlyStatistics([...store.consultations.values()], [...store.publications.values()], month);
 
 function fixture() {
   const store = createStore(Date.parse('2026-10-17T15:00:00Z'));
@@ -19,7 +22,7 @@ describe('cálculo mensual de actividad', () => {
   it('no confunde fichas registradas con pacientes efectivamente atendidos', () => {
     const { store } = fixture();
     expect(store.patients.size).toBe(2);
-    expect(monthlyStatistics(store, '2026-10')).toEqual({ month: '2026-10', attendedPatients: 0, consultations: 0, prescriptions: 0, insuranceBreakdown: [], leadingInsurances: [], leadingInsuranceConsultations: 0 });
+    expect(monthly(store, '2026-10')).toEqual({ month: '2026-10', attendedPatients: 0, consultations: 0, prescriptions: 0, insuranceBreakdown: [], leadingInsurances: [], leadingInsuranceConsultations: 0 });
   });
 
   it('cuenta pacientes únicos, visitas repetidas y únicamente consultas finalizadas del mes', () => {
@@ -29,7 +32,7 @@ describe('cálculo mensual de actividad', () => {
     consultation('draft', 'patient-luis-demo', '2026-10-12', 'PAMI', 'draft');
     consultation('previous', 'patient-luis-demo', '2026-09-30', 'PAMI');
     consultation('next', 'patient-luis-demo', '2026-11-01', 'PAMI');
-    const statistics = monthlyStatistics(store, '2026-10');
+    const statistics = monthly(store, '2026-10');
     expect(statistics.attendedPatients).toBe(1);
     expect(statistics.consultations).toBe(2);
     expect(statistics.insuranceBreakdown).toEqual([{ insurance: 'APOS', consultations: 2, patients: 1 }]);
@@ -40,7 +43,7 @@ describe('cálculo mensual de actividad', () => {
     consultation('first', 'patient-ana-demo', '2026-10-01', ' APOS ');
     consultation('second', 'patient-ana-demo', '2026-10-10', 'apos');
     store.patients.get('patient-ana-demo')!.insurance = 'PAMI';
-    expect(monthlyStatistics(store, '2026-10').insuranceBreakdown).toEqual([{ insurance: 'APOS', consultations: 2, patients: 1 }]);
+    expect(monthly(store, '2026-10').insuranceBreakdown).toEqual([{ insurance: 'APOS', consultations: 2, patients: 1 }]);
   });
 
   it('no cuenta dos veces una consulta corregida con una enmienda', () => {
@@ -49,7 +52,7 @@ describe('cálculo mensual de actividad', () => {
     consultation('correction', 'patient-ana-demo', '2026-10-01', 'APOS');
     store.consultations.set('original', { ...store.consultations.get('original')!, supersededAt: 1 });
     store.consultations.set('correction', { ...store.consultations.get('correction')!, supersedesId: 'original', amendmentReason: 'Se corrigió la fecha' });
-    const statistics = monthlyStatistics(store, '2026-10');
+    const statistics = monthly(store, '2026-10');
     expect(statistics.consultations).toBe(1);
     expect(statistics.attendedPatients).toBe(1);
     expect(statistics.insuranceBreakdown).toEqual([{ insurance: 'APOS', consultations: 1, patients: 1 }]);
@@ -62,7 +65,7 @@ describe('cálculo mensual de actividad', () => {
     consultation('private-one', 'patient-luis-demo', '2026-10-02', 'Sin obra social');
     consultation('private-two', 'patient-luis-demo', '2026-10-03', 'Sin obra social');
     consultation('unknown', 'patient-ana-demo', '2026-10-04', '');
-    const statistics = monthlyStatistics(store, '2026-10');
+    const statistics = monthly(store, '2026-10');
     expect(statistics.leadingInsurances).toEqual(['APOS', 'PAMI']);
     expect(statistics.leadingInsuranceConsultations).toBe(1);
     expect(statistics.insuranceBreakdown[0]).toEqual({ insurance: 'Particular', consultations: 2, patients: 1 });
@@ -73,7 +76,7 @@ describe('cálculo mensual de actividad', () => {
   it('no inventa una obra social líder si solo hay atenciones particulares', () => {
     const { store, consultation } = fixture();
     consultation('private', 'patient-ana-demo', '2026-10-01', 'Sin obra social');
-    const statistics = monthlyStatistics(store, '2026-10');
+    const statistics = monthly(store, '2026-10');
     expect(statistics.consultations).toBe(1);
     expect(statistics.leadingInsurances).toEqual([]);
     expect(statistics.leadingInsuranceConsultations).toBe(0);
@@ -85,8 +88,8 @@ describe('cálculo mensual de actividad', () => {
     publication('november-first', 'prescription', '2026-11-01T03:00:00Z');
     publication('indication', 'indication', '2026-10-17T15:00:00Z');
     publication('september', 'prescription', '2026-09-30T15:00:00Z');
-    expect(monthlyStatistics(store, '2026-10').prescriptions).toBe(1);
-    expect(monthlyStatistics(store, '2026-11').prescriptions).toBe(1);
-    expect(monthlyStatistics(store, '2026-10').attendedPatients).toBe(0);
+    expect(monthly(store, '2026-10').prescriptions).toBe(1);
+    expect(monthly(store, '2026-11').prescriptions).toBe(1);
+    expect(monthly(store, '2026-10').attendedPatients).toBe(0);
   });
 });

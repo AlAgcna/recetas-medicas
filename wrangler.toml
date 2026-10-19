@@ -1,0 +1,13 @@
+# Entrada cerrada: publica la pantalla de espera, no el prototipo clínico.
+name = "recetas-medicas"
+main = "src/server/index.ts"
+compatibility_date = "2026-10-19"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+# La API siempre llega al Worker y responde 503, incluso al navegar directamente.
+run_worker_first = ["/api", "/api/*"]
+
+[dev]
+ip = "127.0.0.1"

@@ -209,7 +209,29 @@ seguridad, disponibilidad o cumplimiento legal de un sistema productivo.
 - `src/web/main.tsx` solo importa las pantallas de demostración cuando Vite está
   en desarrollo. El build muestra «Servicio todavía no habilitado».
 - `npm run preview` sirve esa pantalla cerrada, no el prototipo interactivo.
-- No hay script de despliegue ni configuración de infraestructura productiva.
+- `wrangler.toml` configura el Worker `recetas-medicas` con la entrada cerrada y
+  los estáticos de `dist`. Las rutas `/api` y `/api/*` pasan siempre por el Worker
+  (503); el resto sirve la pantalla «Servicio todavía no habilitado».
+- Todavía no hay bindings D1/R2 ni autenticación productiva conectados.
+
+### Configuración de Cloudflare Workers Builds
+
+El error `The detected framework ("Hono") cannot be automatically configured`
+aparece cuando Wrangler intenta detectar el proyecto sin configuración explícita.
+El archivo `wrangler.toml` de la raíz fija la entrada y los estáticos; Wrangler
+queda fijado en `package.json` y `package-lock.json`.
+
+En el proyecto `recetas-medicas`, usar la raíz del repositorio, comando de build
+`npm run build` y comando de despliegue `npx wrangler deploy`. Esto publica
+únicamente la pantalla de espera y la API cerrada, no habilita el portal clínico.
+La publicación queda a cargo del usuario.
+
+Para comprobar el empaquetado sin publicar ni crear recursos:
+
+```bash
+npm run build
+npx wrangler deploy --dry-run
+```
 
 No eliminar estos bloqueos para publicar la demo. La siguiente etapa debe
 implementar autenticación profesional real, los adaptadores de persistencia (el

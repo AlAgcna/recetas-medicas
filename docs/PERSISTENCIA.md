@@ -1,33 +1,48 @@
 # Persistencia real: D1 y R2
 
-Estado: 19 de octubre de 2026. **Diseño y esquema inicial**, verificados contra
-SQLite local. No hay adaptadores, `wrangler.toml`, bindings ni recursos de
-Cloudflare creados, y **no hay ningún despliegue**. La aplicación sigue guardando
-todo en memoria (`src/server/demo/`). Ver `DESARROLLO.md` para el prototipo y
-`ARQUITECTURA.md` para el modelo conceptual.
+Estado: 19 de octubre de 2026. **Esquema y adaptadores de almacenamiento**, con
+los invariantes verificados contra SQLite real y un doble de R2 en memoria. No
+hay bindings D1/R2 conectados ni recursos de datos creados por el agente.
+`wrangler.toml` configura solamente la entrada cerrada y los estáticos; el
+empaquetado se verifica con `--dry-run`, sin desplegar. La aplicación
+(`src/server/app.ts`) consume el puerto
+`src/server/storage/port.ts`; el prototipo lo implementa en memoria
+(`src/server/demo/`) y el destino en `src/server/d1/`. Ver `DESARROLLO.md` y
+`ARQUITECTURA.md`.
 
 Este documento fija las decisiones de persistencia ya tomadas y separa lo que
 sigue pendiente. No convierte propuestas en requisitos confirmados.
 
 ## 1. Alcance de esta etapa
 
-Existe y está probado:
+Existe y está probado con datos ficticios:
 
 - `db/migrations/0001_persistencia_inicial.sql`: esquema D1 (SQLite) revisado a
   mano, con restricciones e índices que sostienen los invariantes del producto.
-- `tests/persistence.test.ts`: carga esa migración en un SQLite real en memoria
-  (módulo `node:sqlite` de Node 24), con datos ficticios, y comprueba que cada
+- `src/server/storage/port.ts`: el puerto de almacenamiento, expresado en casos
+  de uso y no en CRUD. La aplicación no conoce Maps, SQL ni R2.
+- `src/server/d1/storage.ts` y `src/server/d1/database.ts`: adaptador de D1 y R2
+  sobre interfaces estructurales mínimas; no depende de
+  `@cloudflare/workers-types` y los bindings reales las satisfacen.
+- `src/server/demo/storage.ts`: implementación en memoria de la misma interfaz,
+  usada por el prototipo y por las pruebas de API.
+- `tests/persistence.test.ts`: carga la migración en SQLite real
+  (`node:sqlite` de Node 24), con datos ficticios, y comprueba que cada
   invariante rechaza lo que debe rechazar, además de los patrones atómicos de D1.
+- `tests/d1-storage.test.ts`: prueba el adaptador D1 contra ese SQLite real.
+- `tests/d1-api.test.ts`: monta la aplicación real sobre el adaptador D1 y
+  verifica sesiones, reemplazo de indicaciones, enmiendas y aislamiento en la
+  descarga de recetas.
 
 Todavía no existe:
 
-- Adaptadores de acceso a datos ni sustitución del almacén en memoria.
-- `wrangler.toml`, bindings D1/R2, entrada de Worker, ni recurso alguno creado.
+- Composición de la entrada de Worker con D1/R2 y bindings de esos servicios.
 - Prueba contra D1/miniflare, copias de respaldo ni migración de datos reales.
 
-Drizzle se adopta para la capa de acceso (tipos y consultas) y se instala junto
-con los adaptadores. Las **migraciones quedan como SQL revisado a mano**, que es
-lo que aplica D1 y lo que se puede auditar antes de tocar datos.
+El acceso a datos es **SQL parametrizado revisado a mano**, no un ORM. Drizzle no
+está instalado ni adoptado; la biblioteca a usar sigue como decisión abierta (§7),
+porque las operaciones críticas dependen de sentencias condicionales y de
+`batch()` (§3) más que de un constructor de consultas.
 
 ## 2. Qué sostiene la base y qué sostiene el servidor
 
@@ -67,13 +82,17 @@ recursos:
 - Sentencias condicionales: `UPDATE ... WHERE <condición>` y `meta.changes` (o
   `RETURNING`) para saber si esta ejecución ganó la carrera.
 
-Patrones verificados para cada operación crítica:
+Patrones implementados en `src/server/d1/storage.ts` y verificados por
+`tests/d1-storage.test.ts` y `tests/d1-api.test.ts`:
 
-- **Reemplazar una indicación.** Se compara `expectedActiveId` con la activa
-  vigente y, en un `batch`, se ejecuta `UPDATE publications SET active = 0,
-  superseded_at = ? WHERE id = ? AND active = 1` más el `INSERT` de la nueva. Si
-  el `UPDATE` no cambia exactamente una fila, se responde 409 sin escribir. Aun
-  con dos pestañas simultáneas, los índices únicos parciales impiden dos activas.
+- **Reemplazar una indicación.** En un `batch`: el `INSERT` de la versión nueva
+  queda inactiva y sólo ocurre si la activa vigente es la esperada
+  (`... WHERE (SELECT id FROM publications WHERE active = 1 AND kind = 'indication'
+  AND scope = ? AND patient_id IS ?) IS ?`); luego se desactiva la anterior
+  (`UPDATE publications SET active = 0, superseded_at = ? WHERE id = ? AND active = 1`)
+  y se activa la nueva. Si la versión esperada ya fue reemplazada, ninguna fila
+  cambia y se responde 409. Con dos pestañas simultáneas, los índices únicos
+  parciales impiden dos activas.
 - **Enmendar una consulta.** `UPDATE consultations SET superseded_at = ? WHERE
   id = ? AND superseded_at IS NULL` y el `INSERT` de la versión vigente con su
   motivo, en un `batch`. Si no hay fila, otra solicitud ya la reemplazó: 409.
@@ -102,7 +121,7 @@ sesiones de D1 (`withSession`) si se habilita lectura replicada.
   pasa por el endpoint autorizado (sesión y visibilidad de la publicación).
 - La clave del objeto se guarda en `documents.r2_key` (única) y **nunca se
   entrega al navegador**; es opaca y no se deriva de un dato que envíe el
-  cliente. Criterio propuesto: `patients/<patientId>/<documentId>.pdf`.
+  cliente. Criterio aplicado: `patients/<patientId>/<documentId>.pdf`.
 - Se guarda el original sin modificarlo: no se reescribe, recomprime, sella ni
   agrega contraseñas, para no invalidar una firma digital existente. Sin OCR ni
   conversión en el núcleo.
@@ -114,34 +133,48 @@ sesiones de D1 (`withSession`) si se habilita lectura replicada.
 
 ## 5. Sustitución del almacén en memoria
 
-- `src/server/demo/` (memoria, sesiones y mensajería simuladas) sigue siendo el
-  almacén del prototipo local y de las pruebas de API. No se importa desde la
-  entrada de producción.
-- Los adaptadores reales exponen operaciones asíncronas por agregado (pacientes,
-  consultas y enmiendas, publicaciones, documentos, sesiones, desafíos,
-  auditoría). Los contratos de `src/shared/contracts.ts` no cambian: siguen
-  siendo el formato de la API.
+La aplicación ya no conoce el almacén: consume el puerto
+`src/server/storage/port.ts`. Dos implementaciones cumplen la misma interfaz:
+
+- `src/server/demo/storage.ts` (`createMemoryStorage`), sobre el estado en
+  memoria de `src/server/demo/store.ts`. Es lo que usan el prototipo y las
+  pruebas de API; no se importa desde la entrada de producción.
+- `src/server/d1/storage.ts` (`createD1Storage`), sobre D1 y R2.
+
+La sustitución no bifurca la aplicación: `src/server/app.ts` (`createApp`) es la
+aplicación real y `src/server/demo/app.ts` (`createDemoApp`) la compone con el
+almacén en memoria y agrega el buzón (`/api/demo/*`) y el PDF de ejemplo. La
+entrada de producción usará el adaptador de D1.
+
+- El puerto expone operaciones asíncronas por caso de uso (pacientes, consultas y
+  enmiendas, publicaciones y su visibilidad, archivos, sesiones, desafíos,
+  auditoría y los agregados de la portada), no CRUD por tabla.
+- Los códigos y tokens no llegan a la base: se guarda el hash del token de sesión
+  y el verificador HMAC del desafío.
 - El buzón simulado con el código en claro es exclusivo de la demo y **no se
   persiste**: en producción el código sale por WhatsApp Cloud API y en la base
   queda sólo el verificador HMAC.
-- `rateLimits` (contador en memoria) no se migra a D1: los límites distribuidos
-  corresponden a la plataforma.
+- `rateLimits` sigue siendo un contador en memoria dentro de `src/server/app.ts`
+  y no se migra a D1: los límites distribuidos corresponden a la plataforma (§7).
 
 ## 6. Migraciones y verificación
 
 - Archivos `db/migrations/NNNN_*.sql`, revisados antes de aplicar. En desarrollo:
   `npx wrangler d1 migrations apply <base> --local`. En la base remota sólo
   después de revisar, respaldar y con autorización explícita del usuario.
-- `npm test` ejecuta `tests/persistence.test.ts`, que aplica la migración en
-  SQLite real y prueba los invariantes y los patrones condicionales. Eso valida
-  el SQL y las reglas, **no** la compatibilidad con D1, el rendimiento ni la
-  disponibilidad.
+- `npm test` incluye `tests/persistence.test.ts` (invariantes y patrones del
+  SQL), `tests/d1-storage.test.ts` (el adaptador D1) y `tests/d1-api.test.ts` (la
+  aplicación sobre D1), todos contra SQLite real y un doble de R2. Eso valida el
+  SQL, las reglas y la composición, **no** la compatibilidad exacta con D1, el
+  rendimiento ni la disponibilidad.
 - D1 y R2 se respaldan por separado; GitHub sólo guarda código. El
   procedimiento de respaldo y restauración sigue pendiente.
 
 ## 7. Decisiones abiertas
 
-1. Instalar y adoptar Drizzle en la capa de acceso (con los adaptadores).
+1. Biblioteca de acceso a datos: hoy el adaptador usa SQL parametrizado a mano.
+   Antes de instalar una dependencia, decidir si Drizzle aporta algo a estas
+   operaciones o si se deja asentado que el SQL a mano es la decisión.
 2. Cuenta profesional real (`professionals`), autor de consultas y actor de
    auditoría: se define con la autenticación profesional.
 3. Cambio de contacto verificado: invalidar desafíos y revocar sesiones de
@@ -156,7 +189,8 @@ sesiones de D1 (`withSession`) si se habilita lectura replicada.
 
 ## 8. Próximos pasos sugeridos
 
-1. Adaptadores y sustitución del almacén, con Drizzle y pruebas de reglas.
-2. Entrada de Worker y `wrangler.toml` con bindings D1/R2 locales (sin desplegar).
-3. Autenticación profesional real.
-4. Integración oficial de WhatsApp Cloud API.
+1. Conectar la entrada de Worker y `wrangler.toml` con bindings D1/R2 locales:
+   usar `createD1Storage` con los bindings reales.
+2. Autenticación profesional real.
+3. Integración oficial de WhatsApp Cloud API.
+4. Decisión de la biblioteca de acceso a datos (§7.1).

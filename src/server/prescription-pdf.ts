@@ -1,4 +1,4 @@
-import { pdfPolicy, type PdfMetadata } from '../../shared/contracts';
+import { pdfPolicy, type PdfMetadata } from '../shared/contracts';
 
 export type StoredPdf = { bytes: Uint8Array<ArrayBuffer>; metadata: Readonly<PdfMetadata> };
 export class PdfInputError extends Error {

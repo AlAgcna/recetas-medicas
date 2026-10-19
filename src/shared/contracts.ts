@@ -85,6 +85,13 @@ export type Publication = PublicationInput & {
   pdf?: PdfMetadata;
 };
 export type PatientPublication = Pick<Publication, 'id' | 'kind' | 'title' | 'content' | 'publishedAt' | 'scope' | 'pdf'>;
+
+// Lo único que el portal del paciente puede ver de una publicación. El resto de
+// los campos (destinatario, actividad, historial) queda del lado profesional.
+export function patientProjection(publication: Publication): PatientPublication {
+  const { id, kind, title, content, publishedAt, scope, pdf } = publication;
+  return { id, kind, title, content, publishedAt, scope, ...(pdf ? { pdf } : {}) };
+}
 export type GeneralIndications = { active: Publication | null; history: Publication[] };
 export type InternalDocument = { id: string; patientId: string; name: string; description: string };
 export type PatientDetail = {

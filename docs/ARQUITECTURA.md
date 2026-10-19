@@ -1,9 +1,11 @@
 # Arquitectura de partida
 
-Versión: 0.2 — 19 de octubre de 2026. Arquitectura objetivo. Existe un prototipo
-local con API en memoria y el esquema D1 inicial en `db/migrations`; no hay
-recurso Cloudflare provisionado y R2, autenticación profesional real y Meta
-todavía no están implementados. Ver `DESARROLLO.md` y `PERSISTENCIA.md`.
+Versión: 0.3 — 19 de octubre de 2026. Arquitectura objetivo. Existe un prototipo
+local con una API en memoria y un adaptador de D1 y R2 detrás del mismo puerto,
+además del esquema D1 inicial en `db/migrations`; todavía no hay recurso
+de datos Cloudflare provisionado por el agente, ni autenticación profesional real
+o Meta implementados. `wrangler.toml` configura únicamente la entrada cerrada
+y los estáticos, todavía sin bindings D1/R2. Ver `DESARROLLO.md` y `PERSISTENCIA.md`.
 
 ## 1. Principios
 
@@ -54,7 +56,7 @@ públicos: su descarga pasa por autorización.
 | Estilos | Tailwind CSS, propuesto | Confirmar al construir el prototipo; priorizar accesibilidad |
 | Servidor | Hono sobre Cloudflare Workers | Validar compatibilidad de dependencias con el runtime |
 | Base de datos | Cloudflare D1 / SQLite | Índices, migraciones y operaciones atómicas verificadas |
-| Acceso a datos | Drizzle, adoptado para la capa de acceso | Se instala con los adaptadores; las migraciones son SQL revisado. D1 no expone transacciones interactivas: usar `batch()` |
+| Acceso a datos | SQL parametrizado detrás de `src/server/storage/port.ts` | Migraciones SQL a mano; el ORM queda por decidir (`PERSISTENCIA.md` §7). D1 no expone transacciones interactivas: usar `batch()` y sentencias condicionales |
 | Validación | Zod, propuesto | Validación obligatoria en el servidor |
 | Archivos | Cloudflare R2 privado | Sin acceso público permanente |
 | Autenticación | Biblioteca mantenida por seleccionar | Sesiones en servidor; MFA profesional y OTP al paciente |
@@ -64,10 +66,11 @@ públicos: su descarga pasa por autorización.
 
 El prototipo fija sus versiones en `package.json` y `package-lock.json` e
 implementa React, Vite, Hono, Zod, Vitest y Playwright. Se eligió CSS propio para
-esta primera experiencia y Tailwind sigue siendo una propuesta. Drizzle se adoptó
-para la capa de acceso y se instalará junto con los adaptadores de persistencia,
-que todavía no existen; el esquema D1 inicial ya está escrito en `db/migrations`
-(ver `PERSISTENCIA.md`). Los comandos actuales están en `DESARROLLO.md`.
+esta primera experiencia y Tailwind sigue siendo una propuesta. La capa de acceso
+es SQL parametrizado dentro de `src/server/d1/`, detrás del puerto
+`src/server/storage/port.ts`, que ya usan tanto el prototipo en memoria como
+D1/R2; no se agregó una dependencia de ORM y esa decisión sigue abierta
+(`PERSISTENCIA.md`). Los comandos actuales están en `DESARROLLO.md`.
 
 ## 4. Fronteras de confianza
 
@@ -129,18 +132,21 @@ sigue no es un esquema definitivo: estas son las responsabilidades acordadas.
   usan `scope: patient` con propietario. Una receta nunca es general.
 - `active` determina visibilidad. Reemplazar conserva título, texto y creación de
   la anterior y agrega `supersededAt`; no sobrescribe su contenido ni la elimina.
-- `src/server/demo/publications.ts` centraliza selección, proyección al paciente
-  y sustitución. Listado y descarga usan la misma regla de visibilidad.
+- La selección y la sustitución viven en el puerto `src/server/storage/port.ts`;
+  la proyección al paciente (`patientProjection`) está en
+  `src/shared/contracts.ts`. Listado y descarga usan la misma regla de visibilidad.
 - El paciente recibe solo ID, tipo, título, contenido, ámbito y publicación; no
   recibe IDs de pacientes, banderas internas o el historial profesional.
-- El servidor compara `expectedActiveId` y realiza el cambio de estado y la
-  creación sin interrupción asíncrona en el proceso local. Una revisión obsoleta
-  obtiene 409 sin alterar las versiones.
-- En D1 se necesitarán operaciones condicionales/transaccionales verificadas y
-  restricciones de unicidad para una general activa y una específica por paciente.
-  No confiar en `UNIQUE(patientId)` para la general: SQLite permite varios NULL.
-- No hay archivos reales ni migración productiva; los registros de la demo se
-  recrean al reiniciar. La persistencia deberá mantener historial y sus invariantes.
+- El servidor compara `expectedActiveId` con la versión activa y publica en un
+  lote condicional (`batch`). Una versión ya reemplazada no se pisa: la solicitud
+  obtiene 409 sin alterar nada.
+- En D1 el bloqueo lo dan las restricciones y las sentencias condicionales:
+  índices únicos parciales para una general activa y una específica por paciente,
+  y guardas con `meta.changes`. No confiar en `UNIQUE(patientId)` para la general:
+  SQLite permite varios NULL.
+- Los registros de la demo se recrean al reiniciar y no hay migración de datos
+  reales; el adaptador de D1 ya conserva ese historial y sus invariantes
+  (`PERSISTENCIA.md`).
 
 ### Enmiendas de consultas
 
@@ -190,11 +196,12 @@ tests/             integración y recorridos E2E
 docs/              documentación de producto y operación
 ```
 
-La estructura anterior es la propuesta para el núcleo definitivo. El prototipo
-usa `src/server/demo/` para aislar almacenamiento, sesiones y mensajería
-simulados de la entrada productiva. Evitar compartir módulos de servidor con el
-bundle del navegador o retornar entidades clínicas completas desde endpoints
-públicos.
+La estructura anterior es la propuesta para el núcleo definitivo; todavía no se
+dividió por dominio. Hoy la aplicación está en `src/server/app.ts`, detrás del
+puerto `src/server/storage/port.ts`, con dos implementaciones: el prototipo en
+`src/server/demo/` y el destino real en `src/server/d1/`. Evitar compartir
+módulos de servidor con el bundle del navegador o retornar entidades clínicas
+completas desde endpoints públicos.
 
 ## 7. Integraciones
 
@@ -243,9 +250,10 @@ públicos.
 - El catálogo solicitado reside en `src/shared/insurance.ts`; el selector buscable
   conserva «Otra» y nombres personalizados. «Sin obra social» se agrupa como
   «Particular». No es un padrón oficial ni una lista de convenios.
-- El cálculo actual opera en memoria en `src/server/demo/statistics.ts`; en la
-  etapa D1 deben conservarse definiciones y pruebas, con índices y migraciones
-  revisados antes de importar datos históricos.
+- El cálculo vive en `src/server/statistics.ts` como función pura sobre las
+  consultas y publicaciones que entrega el almacén. Deben conservarse las
+  definiciones y las pruebas, con índices y migraciones revisados antes de
+  importar datos históricos.
 
 ## 8. Entornos y publicación
 
