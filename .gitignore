@@ -1,0 +1,18 @@
+# Documentos reales (indicaciones, recetas, historias): nunca versionar.
+# Los ejemplos del prototipo se generan con datos ficticios en el código.
+*.pdf
+
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+.wrangler/
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+*.log
+*.tsbuildinfo
+.DS_Store
