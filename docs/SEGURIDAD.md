@@ -239,7 +239,10 @@ definir expiración, validación estricta y revocación sin incluir datos clíni
   minimizar IP y datos de contexto con política de conservación definida.
 - No registrar cuerpos clínicos, documentos, contraseñas, OTP, tokens o cookies.
 - Restringir modificación y acceso a auditoría; no confundir logs temporales
-  del proveedor con el registro de trazabilidad de la aplicación.
+  del proveedor con el registro de trazabilidad de la aplicación. Los registros
+  de invocación de Workers quedan activados en `wrangler.toml`
+  (`[observability.logs]`); sirven para ver peticiones y estados, no para
+  reconstruir la trazabilidad clínica, que vive en `audit_events`.
 - Monitorear errores, cuota de plataforma, gasto de mensajes y entregas fallidas
   sin capturar contenido sensible.
 - Copias de D1 **y** R2 fuera del único punto de fallo operativo. Destino,

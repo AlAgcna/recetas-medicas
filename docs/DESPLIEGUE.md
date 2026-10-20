@@ -120,6 +120,23 @@ Con el dominio real:
 
 Prueba con datos ficticios primero. No cargar historias reales todavía.
 
+## 7. Registros de invocación
+
+`wrangler.toml` deja activada la observabilidad (`[observability.logs]` con
+`invocation_logs` y `persist`). Los registros sirven para ver qué peticiones
+llegaron y con qué estado se respondieron.
+
+**La aplicación no registra datos sensibles.** No hay `console.log` de códigos de
+acceso, DNI, teléfonos, tokens, cookies ni cuerpos de petición: el manejador de
+errores los descarta a propósito. La auditoría clínica va a la tabla
+`audit_events` de D1, no a los logs.
+
+Como consecuencia, un fallo real de entrega (rechazo de Twilio o de Resend) se ve
+en los logs como la petición y su estado, **sin el motivo detallado**. Si alguna
+vez hace falta más detalle, hay que decidirlo como un cambio explícito y acotado
+—por ejemplo, registrar sólo el estado HTTP del proveedor— y nunca números,
+credenciales ni cuerpos completos.
+
 ## Pendientes que este despliegue no resuelve
 
 - **Cuenta gratuita de Twilio**: sólo entrega a números verificados por el titular
