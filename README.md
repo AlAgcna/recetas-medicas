@@ -69,8 +69,10 @@ finalizadas y recetas **publicadas**; no recetas externas que no se hayan cargad
 1. Revisar el prototipo navegable con la médica y resolver los pendientes prioritarios.
 2. Ajustar formularios y experiencia según esa prueba.
 3. Validar el envío automático con el entorno de pruebas oficial de Meta, sin
-   alterar el número que utiliza actualmente el consultorio. La URL de políticas
-   de privacidad que pide Meta se publica en `/privacidad` (ver
+   alterar el número que utiliza actualmente el consultorio. Las URLs que pide
+   Meta en la revisión se publican en el portal: política de privacidad en
+   `/privacidad`, condiciones del servicio en `/condiciones` e instrucciones de
+   eliminación de datos en `/eliminacion-de-datos` (ver
    [Desarrollo local](docs/DESARROLLO.md)).
 4. Implementar y probar el núcleo funcional y de seguridad.
 5. Validar requisitos legales, respaldos, recuperación y operación antes de

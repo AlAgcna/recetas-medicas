@@ -209,9 +209,13 @@ El diseño final reemplaza la propuesta inicial de envío manual:
 - Validar Cloud API con recursos oficiales de Meta y destinatarios habilitados.
   Una prueba de mensaje no prueba habilitación de plantillas OTP para pacientes reales.
 - Revalidar tarifas de autenticación, presupuesto y requisitos de número/plantilla.
-- La política de privacidad es HTML plano sin JS (`public/privacidad.html`, servida
-  en `/privacidad`), con responsable sin nombre propio y contacto `dranallim@gmail.com`.
-  Es la URL que pide Meta: se publica con el push y el deploy que hace el usuario.
+- Las URLs que pide Meta son páginas HTML sin JavaScript en `public/`:
+  `/privacidad` (política de privacidad), `/condiciones` (condiciones del
+  servicio) y `/eliminacion-de-datos` (instrucciones de eliminación de datos), con
+  responsable sin nombre propio y contacto `dranallim@gmail.com`. Se publican con
+  el push y el deploy que hace el usuario. La eliminación que anuncian es hoy un
+  procedimiento manual del consultorio: la herramienta de borrado todavía no
+  existe (ver `SEGURIDAD.md` §10).
 - No alterar el WhatsApp habitual sin comprobar coexistencia y pedir permiso.
 - Importar Word conservando originales, fecha conocida, procedencia y paciente
   revisado. No inventar fechas ni habilitar teléfonos antiguos sin verificarlos.

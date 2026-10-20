@@ -296,12 +296,16 @@ definir expiración, validación estricta y revocación sin incluir datos clíni
 - El portal entrega recetas de Digidoc y no se presenta como recetario propio
   autorizado. Emitir PDF, agregar firma o QR no demuestra validez de receta.
 - No utilizar «aceptar términos» como sustituto de todos los requisitos legales.
-- La URL pública de privacidad (`public/privacidad.html`, servida como
-  `/privacidad`) publica un aviso preliminar: identifica al responsable sin
-  nombre propio, enumera datos, finalidades, encargados (Cloudflare, WhatsApp de
-  Meta y proveedor de correo), conservación, seguridad y derechos, y no declara
-  cumplimiento ni certificación. Falta la revisión legal completa antes de
-  operar con datos reales.
+- Las tres URLs públicas que exige la revisión de la app de Meta — `/privacidad`
+  (política de privacidad), `/condiciones` (condiciones del servicio) y
+  `/eliminacion-de-datos` (instrucciones de eliminación de datos), servidas desde
+  `public/` sin JavaScript — publican textos preliminares: responsable sin nombre
+  propio, datos, finalidades, encargados (Cloudflare, WhatsApp de Meta y proveedor
+  de correo), conservación, seguridad y derechos, sin promesa de disponibilidad ni
+  declaración de cumplimiento ni certificación. La eliminación que anuncian es hoy
+  un procedimiento manual del consultorio: la herramienta de borrado todavía no
+  existe en el producto (§10). Falta la revisión legal completa antes de operar
+  con datos reales.
 
 Referencias iniciales a revalidar:
 
@@ -313,7 +317,10 @@ Referencias iniciales a revalidar:
 ## 10. Lista de salida a producción
 
 - [ ] Responsable y titularidad de cuentas, dominio, claves y operación definidos.
-- [ ] Política de privacidad revisada y publicada con el responsable identificado.
+- [ ] Páginas públicas de Meta (privacidad, condiciones y eliminación de datos)
+  revisadas, con el responsable identificado y la revisión legal completa, y
+  procedimiento de eliminación de datos implementado para corresponder con lo que
+  anuncian.
 - [ ] Revisión legal aplicable, contratos y transferencias documentados.
 - [ ] Contactos verificados, recuperación y teléfonos compartidos resueltos.
 - [ ] Ingreso de la médica probado de punta a punta, con la casilla de correo

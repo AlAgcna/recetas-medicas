@@ -12,7 +12,10 @@ if (import.meta.env.DEV) {
       <span className="eyebrow">PORTAL CLÍNICO</span>
       <h1>Servicio todavía no habilitado</h1>
       <p>Este desarrollo está en etapa de prototipo local. No ingreses datos personales o médicos.</p>
-      <p className="locked-link"><a href="/privacidad">Política de privacidad</a></p>
+      <p className="locked-link">
+        <a href="/privacidad">Política de privacidad</a> · <a href="/condiciones">Condiciones del servicio</a> ·{' '}
+        <a href="/eliminacion-de-datos">Eliminación de datos</a>
+      </p>
     </main>,
   );
 }

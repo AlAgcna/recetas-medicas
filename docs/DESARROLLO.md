@@ -253,12 +253,16 @@ seguridad, disponibilidad o cumplimiento legal de un sistema productivo.
 - `src/web/main.tsx` solo importa las pantallas de demostración cuando Vite está
   en desarrollo. El build muestra «Servicio todavía no habilitado».
 - `npm run preview` sirve esa pantalla cerrada, no el prototipo interactivo.
-- `public/privacidad.html` se publica como `/privacidad`, sin JavaScript, y es la
-  URL de políticas de privacidad que exige la revisión de la app de Meta. Es la
-  única página pública además de la pantalla cerrada: no habilita el portal ni la
-  API. El texto es preliminar (responsable sin nombre propio y
-  `dranallim@gmail.com` como contacto) y todavía necesita revisión legal; hoy no
-  declara cumplimiento.
+- Las páginas públicas de `public/` se publican sin JavaScript como
+  `/privacidad`, `/condiciones` y `/eliminacion-de-datos`. Son las tres URLs que
+  exige la revisión de la app de Meta: política de privacidad, condiciones del
+  servicio e instrucciones de eliminación de datos. No habilitan el portal ni la
+  API; en `/` sigue viéndose la pantalla cerrada. Los textos son preliminares
+  (responsable sin nombre propio y `dranallim@gmail.com` como contacto, sin
+  promesa de disponibilidad permanente ni declaración de cumplimiento) y todavía
+  necesitan revisión legal. La eliminación que enuncia `/eliminacion-de-datos` es
+  hoy un procedimiento manual del consultorio: la herramienta de borrado todavía
+  no existe en el producto y queda como pendiente (ver `SEGURIDAD.md` §10).
 - `wrangler.toml` configura el Worker `recetas-medicas` con la entrada cerrada,
   los estáticos de `dist` y los bindings D1/R2. Las rutas `/api` y `/api/*` pasan
   siempre por el Worker (503); el resto sirve la pantalla «Servicio todavía no
@@ -296,11 +300,12 @@ Mantener los controles de `SEGURIDAD.md` como puertas de producción.
 
 ```text
 db/migrations/        esquema D1 revisado (SQL) y verificado con SQLite local
-public/               página pública de privacidad (HTML, sin JavaScript)
+public/               páginas públicas de Meta (privacidad, condiciones, eliminación de datos)
 scripts/              arranque local y comprobación del build
 src/shared/           contratos Zod y reglas temporales
 src/server/d1/        adaptador de D1 y R2
 src/server/demo/      almacén y servidor ficticios, más la entrada local con D1/R2
+src/server/email/     adaptador de correo (Resend) y su puerto
 src/server/index.ts   entrada de producción cerrada
 src/web/              pantallas y estilos del prototipo
 tests/                pruebas de API, recorridos de navegador y de persistencia
