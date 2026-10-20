@@ -13,9 +13,12 @@ El portal usa códigos simulados, indicaciones legibles en pantalla con descarga
 opcional y recetas PDF. Hay una general activa para todos y una específica por
 paciente; los reemplazos conservan historial. Obra social permite buscar en el
 catálogo solicitado o elegir «Otra».
-Los datos se mantienen solo en memoria y se pierden al
-reiniciar. No hay infraestructura provisionada, autenticación profesional real
-ni integración con WhatsApp. **No usar con historias reales.**
+Los datos del prototipo se mantienen solo en memoria y se pierden al
+reiniciar. Existen la base D1 `dranallim` y el bucket R2 `recetas` con sus
+bindings declarados, pero todavía vacíos y sin migración remota, porque la
+entrada desplegada sigue cerrada. El ingreso de la médica por enlace de un solo
+uso ya existe en el servidor y en sus pruebas, pero todavía no está montado en
+producción; no hay integración con WhatsApp. **No usar con historias reales.**
 
 ## Probar en la computadora
 
@@ -54,7 +57,9 @@ finalizadas y recetas **publicadas**; no recetas externas que no se hayan cargad
 - Base de datos: Cloudflare D1, compatible con SQLite.
 - Archivos: Cloudflare R2 privado.
 - Autenticación web: sesiones revocables del lado del servidor y cookies seguras;
-  JWT no es la opción inicial.
+  JWT no es la opción inicial. Ingreso de la médica por enlace de un solo uso
+  enviado a su correo (Resend), sin contraseña; ese factor único y la casilla
+  como credencial principal están registrados en [Seguridad](docs/SEGURIDAD.md).
 - Códigos al paciente: WhatsApp Business Platform / Cloud API.
 - Recetas: PDF original emitido en Digidoc; el portal no emite recetas propias.
 - Repositorio previsto: GitHub privado, administrado manualmente por el usuario.
@@ -64,7 +69,9 @@ finalizadas y recetas **publicadas**; no recetas externas que no se hayan cargad
 1. Revisar el prototipo navegable con la médica y resolver los pendientes prioritarios.
 2. Ajustar formularios y experiencia según esa prueba.
 3. Validar el envío automático con el entorno de pruebas oficial de Meta, sin
-   alterar el número que utiliza actualmente el consultorio.
+   alterar el número que utiliza actualmente el consultorio. La URL de políticas
+   de privacidad que pide Meta se publica en `/privacidad` (ver
+   [Desarrollo local](docs/DESARROLLO.md)).
 4. Implementar y probar el núcleo funcional y de seguridad.
 5. Validar requisitos legales, respaldos, recuperación y operación antes de
    incorporar historias reales o habilitar pacientes.
@@ -75,4 +82,3 @@ finalizadas y recetas **publicadas**; no recetas externas que no se hayan cargad
 por herramientas, scripts o APIs.** El usuario realizará esas acciones a mano.
 Crear esta documentación no autoriza a inicializar Git, crear un repositorio
 remoto, desplegar servicios ni contratar recursos.
->>>>>>> 595dc85 (Prototipo del portal clinico)

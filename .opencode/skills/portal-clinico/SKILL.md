@@ -141,22 +141,28 @@ El diseño final reemplaza la propuesta inicial de envío manual:
 
 - TypeScript + React + Vite para interfaz.
 - TypeScript + Hono sobre Cloudflare Workers para servidor.
-- Cloudflare D1 / SQLite para datos; Drizzle propuesto para acceso y migraciones.
+- Cloudflare D1 / SQLite para datos. Drizzle quedó sin adoptar: la capa de acceso
+  usa SQL parametrizado sobre el puerto de almacenamiento (ver `PERSISTENCIA.md`
+  §7.1, decisión abierta).
 - Cloudflare R2 privado para documentos.
 - Zod propuesto para validar entradas; Tailwind CSS propuesto para estilos.
 - Vitest y Playwright propuestos para pruebas de reglas e integración/E2E.
 - Una aplicación, preferentemente web y API del mismo origen; no microservicios.
 - Sesiones opacas y revocables del lado del servidor. Cookies `HttpOnly`,
   `Secure`, `SameSite` y protección CSRF adecuada. No JWT por defecto.
-- La biblioteca concreta de autenticación y el método MFA profesional siguen
-  pendientes de validar, incluyendo compatibilidad y costo de CPU en Workers.
+- Ingreso de la médica por **enlace de un solo uso al correo** (decisión del
+  usuario, 19 de octubre de 2026, detalle y riesgos en `SEGURIDAD.md` §2): sin
+  contraseña y sin segundo factor dentro del portal. La casilla de correo es la
+  credencial principal y necesita MFA en el proveedor; conviene revisarlo con la
+  médica antes de abrir producción.
 - GitHub administrado manualmente por el usuario. No hay permiso implícito de CI
   con despliegue automático ni creación de recursos externos.
 
 ## Reglas de seguridad al implementar
 
 - DNI identifica, no autentica. Nunca aceptar un teléfono nuevo en el acceso público.
-- MFA profesional y recuperación segura, con protección de cuentas de proveedores.
+- MFA y recuperación segura en las cuentas de proveedores, incluida la casilla de
+  correo de la médica (factor principal del ingreso profesional, `SEGURIDAD.md` §2).
 - Autorizar cada consulta y archivo por rol, paciente y publicación en el servidor.
 - Las estadísticas son privadas: agregación en el servidor, sin datos personales
   en la respuesta y sin acceso para pacientes o visitantes. No usar analítica externa.
@@ -183,24 +189,29 @@ El diseño final reemplaza la propuesta inicial de envío manual:
   `npm run dev` en `http://127.0.0.1:5173`, solo loopback. Reiniciar borra cambios.
 - Cambios de API requieren reinicio manual. Playwright utiliza servidores
   aislados en 5183/8788; no detener ni reutilizar la demo del usuario para probar.
-- El acceso profesional demo no usa contraseña/MFA real. No confundirlo con una
-  biblioteca de autenticación seleccionada para producción.
+- El acceso demo (`/api/demo/doctor-login`) no usa credencial real. El ingreso
+  real por enlace de correo existe en el servidor, con sus rutas y pruebas, pero
+  todavía no se monta en la entrada productiva.
 - El build muestra una pantalla cerrada y la entrada productiva devuelve 503.
   No quitar estos bloqueos para desplegar el prototipo.
 - Zod, Vitest y Playwright están instalados. El diseño usa CSS propio; Tailwind
-  sigue propuesto. Drizzle se adoptó para la capa de acceso y se instalará con los
-  adaptadores; las migraciones D1 son SQL revisado a mano.
+  sigue propuesto. Drizzle no se instaló: la capa de acceso usa puertos con SQL
+  parametrizado; las migraciones D1 son SQL revisado a mano.
 - Guardado de consultas manual; finalizadas no se sobrescriben, se corrigen con
   enmiendas trazables. Hay reemplazos versionados de indicaciones, con historial
   conservado y descargas revocadas.
-- Existe el esquema D1 inicial (`db/migrations`, ver `PERSISTENCIA.md`) con sus
-  pruebas locales. Adaptadores, archivos reales, retiro manual sin reemplazo y
-  despliegue siguen pendientes.
+- Existe el esquema D1 (`db/migrations` 0001 y 0002, ver `PERSISTENCIA.md`) con
+  sus adaptadores de D1/R2 y de correo, y sus pruebas locales. Montar la entrada
+  productiva, usar archivos reales en R2, retiro manual sin reemplazo y despliegue
+  siguen pendientes.
 - Validar las pantallas con la médica antes de consolidar experiencia y formularios.
 - Códigos simulados solo en pruebas; producción debe rechazar esa configuración.
 - Validar Cloud API con recursos oficiales de Meta y destinatarios habilitados.
   Una prueba de mensaje no prueba habilitación de plantillas OTP para pacientes reales.
 - Revalidar tarifas de autenticación, presupuesto y requisitos de número/plantilla.
+- La política de privacidad es HTML plano sin JS (`public/privacidad.html`, servida
+  en `/privacidad`), con responsable sin nombre propio y contacto `dranallim@gmail.com`.
+  Es la URL que pide Meta: se publica con el push y el deploy que hace el usuario.
 - No alterar el WhatsApp habitual sin comprobar coexistencia y pedir permiso.
 - Importar Word conservando originales, fecha conocida, procedencia y paciente
   revisado. No inventar fechas ni habilitar teléfonos antiguos sin verificarlos.

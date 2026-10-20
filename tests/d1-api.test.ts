@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { policy } from '../src/shared/contracts';
-import { createApp } from '../src/server/app';
+import { createApp, type CookiePolicy } from '../src/server/app';
 import { examplePdf } from '../src/server/demo/pdf';
+import type { OutgoingEmail } from '../src/server/email/port';
+import { sha256 } from '../src/server/prescription-pdf';
 import { d1Storage } from './helpers/sqlite-d1';
 
 // Integración real: la aplicación (src/server/app.ts) sobre el adaptador D1 y
@@ -9,27 +11,31 @@ import { d1Storage } from './helpers/sqlite-d1';
 // la aplicación y que el aislamiento entre pacientes no vive en la interfaz.
 
 const origin = 'http://localhost';
+const doctorAddress = 'consultorio@ejemplo.test';
 const seed = [
   { id: 'patient-ana', dni: '00000001', firstName: 'Ana', lastName: 'Ejemplo', whatsapp: '+5493800000001', insurance: 'APOS', memberNumber: 'DEMO-1' },
   { id: 'patient-luis', dni: '00000002', firstName: 'Luis', lastName: 'Demostración', whatsapp: '+5493800000002', insurance: 'Sin obra social', memberNumber: '' },
 ];
 
-async function harness(initial = Date.parse('2026-10-17T12:00:00Z')) {
-  let clock = initial;
+async function harness(options: { email?: boolean; cookie?: CookiePolicy; initial?: number } = {}) {
+  let clock = options.initial ?? Date.parse('2026-10-17T12:00:00Z');
   const now = () => clock;
-  const { storage } = d1Storage();
+  const { storage, database } = d1Storage();
   for (const patient of seed) await storage.createPatient({ ...patient, contactVerified: true, createdAt: now() });
 
   let inbox: { code: string; expiresAt: number } | undefined;
-  const { app, openSession } = createApp({
+  const mail: OutgoingEmail[] = [];
+  const { app } = createApp({
     storage, now, origin,
     health: { mode: 'worker', persistent: true, whatsapp: false },
+    cookie: options.cookie,
+    // Sin configuración de correo el ingreso de la médica queda en 503: nunca
+    // finge haber enviado un enlace.
+    ...(options.email === false ? {} : {
+      doctorEmail: doctorAddress,
+      sendEmail(email: OutgoingEmail) { mail.push(email); },
+    }),
     deliverCode(_patient, code, expiresAt) { inbox = { code, expiresAt }; },
-  });
-  // La entrada de producción definirá acá su autenticación profesional real.
-  app.post('/api/test/doctor-login', async c => {
-    const session = await openSession(c, 'doctor');
-    return c.json({ role: session.role, expiresAt: session.expiresAt });
   });
 
   const request = (method: string, path: string, body?: unknown, cookie?: string) => app.request(`${origin}${path}`, {
@@ -38,9 +44,15 @@ async function harness(initial = Date.parse('2026-10-17T12:00:00Z')) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const cookieOf = (response: Response) => response.headers.get('set-cookie')!.split(';')[0];
+  const tokenOf = (message: OutgoingEmail) => message.text.match(/#([0-9a-f]{64})/)![1];
 
+  /** Pide el enlace y lo usa contra la ruta real de ingreso. */
   async function doctor() {
-    return cookieOf(await request('POST', '/api/test/doctor-login'));
+    const requested = await request('POST', '/api/doctor/request-link');
+    expect(requested.status).toBe(200);
+    const opened = await request('POST', '/api/doctor/session', { token: tokenOf(mail.at(-1)!) });
+    expect(opened.status).toBe(200);
+    return cookieOf(opened);
   }
   async function patient(dni = '00000001') {
     inbox = undefined;
@@ -61,7 +73,10 @@ async function harness(initial = Date.parse('2026-10-17T12:00:00Z')) {
     });
   }
 
-  return { storage, request, doctor, patient, prescribe, advance: (ms: number) => { clock += ms; } };
+  return {
+    storage, database, mail, request, doctor, patient, prescribe, cookieOf, tokenOf,
+    advance: (ms: number) => { clock += ms; },
+  };
 }
 
 const consultationBody = (overrides: Record<string, unknown> = {}) => ({
@@ -153,5 +168,85 @@ describe('aplicación sobre D1', () => {
     const doctor = await h.doctor();
     expect((await h.request('POST', '/api/doctor/logout', undefined, doctor)).status).toBe(200);
     expect((await h.request('GET', '/api/doctor/patients', undefined, doctor)).status).toBe(401);
+  });
+});
+
+describe('ingreso de la médica por correo', () => {
+  it('envía un enlace de un solo uso y no lo expone en la respuesta ni en la base', async () => {
+    const h = await harness();
+    const requested = await h.request('POST', '/api/doctor/request-link');
+    expect(requested.status).toBe(200);
+    // La respuesta es siempre la misma y no incluye el token.
+    const message = (await requested.json()).message as string;
+    expect(message).not.toMatch(/[0-9a-f]{64}/);
+
+    expect(h.mail).toHaveLength(1);
+    expect(h.mail[0].to).toBe(doctorAddress);
+    const token = h.tokenOf(h.mail[0]);
+    expect(h.mail[0].text).toContain(`${origin}/acceso#`);
+
+    // En la base y en la auditoría vive el hash del token, nunca el token.
+    expect(await h.database.prepare('SELECT token_hash FROM access_links').all())
+      .toEqual([{ token_hash: await sha256(new TextEncoder().encode(token)) }]);
+    const audit = await h.database.prepare('SELECT action, resource FROM audit_events').all();
+    expect(audit).toContainEqual({ action: 'access-link.created', resource: 'doctor' });
+    expect(JSON.stringify(audit)).not.toContain(token);
+
+    // Un solo uso: la primera vez abre la sesión, la segunda no sirve.
+    const opened = await h.request('POST', '/api/doctor/session', { token });
+    expect(opened.status).toBe(200);
+    expect(opened.headers.get('set-cookie')).toContain('HttpOnly');
+    expect((await h.request('GET', '/api/doctor/patients', undefined, h.cookieOf(opened))).status).toBe(200);
+    expect((await h.request('POST', '/api/doctor/session', { token })).status).toBe(401);
+  });
+
+  it('respeta el enfriamiento y descarta el enlace vencido o reemplazado', async () => {
+    const h = await harness();
+    await h.request('POST', '/api/doctor/request-link');
+    const first = h.tokenOf(h.mail[0]);
+    // Dentro del enfriamiento no se envía otro correo.
+    await h.request('POST', '/api/doctor/request-link');
+    expect(h.mail).toHaveLength(1);
+    h.advance(policy.accessLinkCooldown);
+    await h.request('POST', '/api/doctor/request-link');
+    expect(h.mail).toHaveLength(2);
+    const second = h.tokenOf(h.mail[1]);
+    expect(second).not.toBe(first);
+    // Un enlace nuevo invalida el anterior.
+    expect((await h.request('POST', '/api/doctor/session', { token: first })).status).toBe(401);
+    // Y el vigente vence por tiempo.
+    h.advance(policy.accessLinkLifetime);
+    expect((await h.request('POST', '/api/doctor/session', { token: second })).status).toBe(401);
+  });
+
+  it('rechaza enlaces inventados, mal formados o sin configuración de correo', async () => {
+    const h = await harness();
+    expect((await h.request('POST', '/api/doctor/session', { token: 'a'.repeat(64) })).status).toBe(401);
+    expect((await h.request('POST', '/api/doctor/session', { token: 'no-es-un-token' })).status).toBe(401);
+    expect((await h.request('POST', '/api/doctor/session', {})).status).toBe(401);
+    expect((await h.request('GET', '/api/doctor/patients')).status).toBe(401);
+
+    const closed = await harness({ email: false });
+    expect((await closed.request('POST', '/api/doctor/request-link')).status).toBe(503);
+    expect(closed.mail).toHaveLength(0);
+    expect(await closed.database.prepare('SELECT count(*) AS total FROM access_links').get()).toEqual({ total: 0 });
+  });
+
+  it('la política por defecto de sesión es la de producción: Secure, HttpOnly y sin prefijo demo', async () => {
+    const h = await harness();
+    await h.request('POST', '/api/doctor/request-link');
+    const opened = await h.request('POST', '/api/doctor/session', { token: h.tokenOf(h.mail[0]) });
+    const raw = opened.headers.get('set-cookie')!;
+    expect(raw).toMatch(/^doctor=/);
+    expect(raw).toContain('Secure');
+    expect(raw).toContain('HttpOnly');
+    expect(raw).toContain('SameSite=Strict');
+    expect(raw).not.toContain('demo_');
+    // La demostración declara su propia política aparte (`demoCookies`).
+    const demo = await harness({ cookie: { prefix: 'demo_', secure: false } });
+    await demo.request('POST', '/api/doctor/request-link');
+    const local = (await demo.request('POST', '/api/doctor/session', { token: demo.tokenOf(demo.mail[0]) })).headers.get('set-cookie')!;
+    expect(local).toMatch(/^demo_doctor=/);
+    expect(local).not.toContain('Secure');
   });
 });

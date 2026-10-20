@@ -1,14 +1,19 @@
 # Persistencia real: D1 y R2
 
-Estado: 19 de octubre de 2026. **Esquema y adaptadores de almacenamiento**, con
-los invariantes verificados contra SQLite real y un doble de R2 en memoria. No
-hay bindings D1/R2 conectados ni recursos de datos creados por el agente.
-`wrangler.toml` configura solamente la entrada cerrada y los estáticos; el
-empaquetado se verifica con `--dry-run`, sin desplegar. La aplicación
-(`src/server/app.ts`) consume el puerto
-`src/server/storage/port.ts`; el prototipo lo implementa en memoria
-(`src/server/demo/`) y el destino en `src/server/d1/`. Ver `DESARROLLO.md` y
-`ARQUITECTURA.md`.
+Estado: 19 de octubre de 2026. **Esquema, adaptadores, bindings locales e
+ingreso profesional por correo**. La
+aplicación real corre sobre D1 y R2 emulados por miniflare
+(`src/server/demo/worker.ts` con `wrangler.local.toml`), además de verificarse
+contra SQLite real y un doble de R2 en memoria. Los recursos remotos existen (D1
+`dranallim` y el bucket privado `recetas`, creados por la médica) y
+`wrangler.toml` ya declara sus bindings, pero la entrada desplegada
+(`src/server/index.ts`) sigue cerrada con 503: la autenticación profesional ya
+existe como rutas y adaptador de correo, pero no está montada en esa entrada ni
+tiene pantalla, y WhatsApp sigue pendiente. **No se aplicó ninguna migración ni
+se cargaron datos en la base remota.** La aplicación (`src/server/app.ts`)
+consume el puerto `src/server/storage/port.ts`; el prototipo lo implementa en
+memoria (`src/server/demo/storage.ts`) y el destino en `src/server/d1/`. Ver
+`DESARROLLO.md` y `ARQUITECTURA.md`.
 
 Este documento fija las decisiones de persistencia ya tomadas y separa lo que
 sigue pendiente. No convierte propuestas en requisitos confirmados.
@@ -19,8 +24,13 @@ Existe y está probado con datos ficticios:
 
 - `db/migrations/0001_persistencia_inicial.sql`: esquema D1 (SQLite) revisado a
   mano, con restricciones e índices que sostienen los invariantes del producto.
+- `db/migrations/0002_acceso_profesional.sql`: `access_links` (hash del enlace
+  de ingreso de la médica) y `access_link_control` (enfriamiento de pedidos).
 - `src/server/storage/port.ts`: el puerto de almacenamiento, expresado en casos
   de uso y no en CRUD. La aplicación no conoce Maps, SQL ni R2.
+- `src/server/email/port.ts` y `src/server/email/resend.ts`: el puerto de correo
+  saliente y el adaptador de Resend. La aplicación sólo pide entregar un mensaje;
+  la clave es un secreto del Worker y no aparece en errores ni registros.
 - `src/server/d1/storage.ts` y `src/server/d1/database.ts`: adaptador de D1 y R2
   sobre interfaces estructurales mínimas; no depende de
   `@cloudflare/workers-types` y los bindings reales las satisfacen.
@@ -31,13 +41,25 @@ Existe y está probado con datos ficticios:
   invariante rechaza lo que debe rechazar, además de los patrones atómicos de D1.
 - `tests/d1-storage.test.ts`: prueba el adaptador D1 contra ese SQLite real.
 - `tests/d1-api.test.ts`: monta la aplicación real sobre el adaptador D1 y
-  verifica sesiones, reemplazo de indicaciones, enmiendas y aislamiento en la
-  descarga de recetas.
+  verifica sesiones, reemplazo de indicaciones, enmiendas, aislamiento en la
+  descarga de recetas y el ingreso de la médica (enlace de un solo uso,
+  enfriamiento, vencimiento y política de cookies).
+- `tests/email-resend.test.ts`: comprueba el contrato del adaptador de correo con
+  un `fetch` inyectado, sin red ni credenciales.
+- `wrangler.toml`: bindings `DB` (D1 `dranallim`) y `BUCKET` (R2 `recetas`) ya
+  declarados. La entrada desplegada no los usa todavía.
+- `src/server/demo/worker.ts` con `wrangler.local.toml`: entrada **sólo local**
+  que arma la aplicación real por pedido sobre los bindings D1/R2 emulados, con
+  el buzón simulado de códigos y de correo. Ejercita el mismo adaptador que
+  usará el servicio.
 
 Todavía no existe:
 
-- Composición de la entrada de Worker con D1/R2 y bindings de esos servicios.
-- Prueba contra D1/miniflare, copias de respaldo ni migración de datos reales.
+- Migración ni datos cargados en la D1 remota. Sólo se aplicó en la base local
+  (0001 y 0002).
+- Entrada productiva que use los bindings y monte el ingreso de la médica: requiere
+  secretos de correo, política de cookies de producción y pantalla de ingreso.
+- Copias de respaldo ni migración de datos reales.
 
 El acceso a datos es **SQL parametrizado revisado a mano**, no un ORM. Drizzle no
 está instalado ni adoptado; la biblioteca a usar sigue como decisión abierta (§7),
@@ -64,6 +86,9 @@ debería poder saltarse un invariante con una consulta directa.
 | Cobertura de la visita obligatoria | `insurance_at_visit NOT NULL` |
 | Un solo desafío activo por paciente | índice único parcial `access_challenges_active` |
 | Nunca se guarda el código | sólo el verificador HMAC en `access_challenges` |
+| Un solo enlace de ingreso vigente para la médica | índice único parcial `access_links_active` |
+| Nunca se guarda el enlace de la médica | `access_links.token_hash` (SHA-256), nunca el token |
+| Un pedido de enlace por minuto | upsert condicional sobre `access_link_control` |
 | Nunca se guarda el token de sesión | `sessions.token_hash` (SHA-256) |
 | La sesión de paciente tiene paciente; la profesional no | `CHECK` sobre `role` y `patient_id` |
 | Fecha clínica sin hora inventada | `CHECK` de formato `AAAA-MM-DD` |
@@ -102,6 +127,15 @@ Patrones implementados en `src/server/d1/storage.ts` y verificados por
   ... ON CONFLICT(patient_id) DO UPDATE SET next_request_at = excluded.next_request_at
   WHERE code_request_control.next_request_at <= ? RETURNING next_request_at`.
   Devuelve fila si la solicitud se permite y ninguna si todavía no corresponde.
+- **Reservar el pedido de enlace de la médica.** El mismo patrón sobre
+  `access_link_control`, con ámbito fijo `'doctor'` porque hay una sola médica.
+- **Invalidar el enlace anterior.** En un `batch`: `DELETE FROM access_links
+  WHERE scope = 'doctor' AND consumed_at IS NULL` y `INSERT` del nuevo. El índice
+  `access_links_active` hace fallar el lote entero si quedara un activo.
+- **Consumir el enlace.** `UPDATE access_links SET consumed_at = ? WHERE
+  token_hash = ? AND scope = 'doctor' AND consumed_at IS NULL AND expires_at > ?`
+  y se exige que cambie exactamente una fila: dos usos simultáneos no abren dos
+  sesiones.
 - **Consumir el desafío.** `UPDATE access_challenges SET consumed_at = ? WHERE
   id = ? AND consumed_at IS NULL AND attempts < ? AND expires_at > ?`. Se
   verifica el HMAC antes y se exige que cambie exactamente una fila.
@@ -149,24 +183,58 @@ entrada de producción usará el adaptador de D1.
 - El puerto expone operaciones asíncronas por caso de uso (pacientes, consultas y
   enmiendas, publicaciones y su visibilidad, archivos, sesiones, desafíos,
   auditoría y los agregados de la portada), no CRUD por tabla.
-- Los códigos y tokens no llegan a la base: se guarda el hash del token de sesión
-  y el verificador HMAC del desafío.
+- Los códigos y tokens no llegan a la base: se guarda el hash del token de sesión,
+  el verificador HMAC del desafío y el hash del enlace de acceso de la médica.
 - El buzón simulado con el código en claro es exclusivo de la demo y **no se
   persiste**: en producción el código sale por WhatsApp Cloud API y en la base
   queda sólo el verificador HMAC.
+- El buzón de correo simulado (`store.mailbox` y `/api/demo/mailbox`) es el mismo
+  caso: sirve para probar el ingreso de la médica sin proveedor. En producción el
+  enlace sale por Resend a una única casilla.
 - `rateLimits` sigue siendo un contador en memoria dentro de `src/server/app.ts`
   y no se migra a D1: los límites distribuidos corresponden a la plataforma (§7).
+- La entrada de un Worker arma la aplicación **por pedido**, porque los bindings
+  llegan en `env` (`src/server/demo/worker.ts` ya lo hace). Por eso el verificador
+  HMAC de los códigos recibe un secreto estable mediante `challengeSecret` de
+  `createApp`: sin él, cada instancia generaría uno distinto y el código emitido
+  en un pedido no se podría validar en el siguiente. En el servicio desplegado
+  llegará como secret; en las pruebas y el prototipo es aleatorio por proceso.
 
 ## 6. Migraciones y verificación
 
-- Archivos `db/migrations/NNNN_*.sql`, revisados antes de aplicar. En desarrollo:
-  `npx wrangler d1 migrations apply <base> --local`. En la base remota sólo
-  después de revisar, respaldar y con autorización explícita del usuario.
+- Archivos `db/migrations/NNNN_*.sql`, revisados antes de aplicar. Hoy hay dos
+  (0001 esquema inicial, 0002 acceso profesional). En desarrollo:
+  `npx wrangler d1 migrations apply dranallim --local --config wrangler.local.toml`.
+  En la base remota sólo después de revisar, respaldar y con autorización
+  explícita del usuario.
 - `npm test` incluye `tests/persistence.test.ts` (invariantes y patrones del
-  SQL), `tests/d1-storage.test.ts` (el adaptador D1) y `tests/d1-api.test.ts` (la
-  aplicación sobre D1), todos contra SQLite real y un doble de R2. Eso valida el
+  SQL), `tests/d1-storage.test.ts` (el adaptador D1), `tests/d1-api.test.ts` (la
+  aplicación sobre D1) y `tests/email-resend.test.ts` (el adaptador de correo),
+  todos contra SQLite real y un doble de R2. Eso valida el
   SQL, las reglas y la composición, **no** la compatibilidad exacta con D1, el
   rendimiento ni la disponibilidad.
+- Verificación manual contra el runtime real (miniflare emula D1 y R2):
+
+  ```sh
+  npx wrangler d1 migrations apply dranallim --local --config wrangler.local.toml
+  npx wrangler dev --config wrangler.local.toml --port 8791
+  ```
+
+  Con el servidor en marcha se comprobó, el 19 de octubre de 2026: alta de ficha,
+  consulta finalizada con su cobertura, indicación general, receta con su PDF y
+  SHA-256, acceso del paciente con el código del buzón simulado y descarga
+  byte a byte. Después de **reiniciar el proceso** siguieron disponibles la ficha,
+  la consulta, la publicación, la sesión de paciente guardada en D1 y el objeto
+  de R2. Eso prueba el contrato del adaptador y la persistencia entre reinicios;
+  no prueba la D1 remota, la latencia ni la concurrencia distribuidas.
+
+  Con la migración 0002 aplicada en local se repitió el ingreso de la médica
+  contra ese mismo runtime: pedido de enlace (respuesta genérica, sin token),
+  mensaje en el buzón simulado con la URL pública y el token de 64 caracteres,
+  apertura de sesión con `POST /api/doctor/session`, llamada autenticada con la
+  cookie, 401 en el segundo uso del mismo enlace, 401 con un token inventado y
+  segundo pedido dentro del minuto sin envío nuevo. Verificado con el proceso en
+  marcha, no después de reiniciarlo.
 - D1 y R2 se respaldan por separado; GitHub sólo guarda código. El
   procedimiento de respaldo y restauración sigue pendiente.
 
@@ -189,8 +257,11 @@ entrada de producción usará el adaptador de D1.
 
 ## 8. Próximos pasos sugeridos
 
-1. Conectar la entrada de Worker y `wrangler.toml` con bindings D1/R2 locales:
-   usar `createD1Storage` con los bindings reales.
-2. Autenticación profesional real.
-3. Integración oficial de WhatsApp Cloud API.
-4. Decisión de la biblioteca de acceso a datos (§7.1).
+1. Montar el ingreso de la médica en la entrada productiva: secretos
+   (`RESEND_API_KEY`, `DOCTOR_EMAIL`, `CHALLENGE_SECRET`), política de cookies
+   `Secure` sin prefijo, pantalla `/acceso` y arranque sobre D1. Las rutas, el
+   adaptador de correo y el esquema ya existen y están probados; lo que falta es
+   esa entrada, no el mecanismo.
+2. Integración oficial de WhatsApp Cloud API para los códigos del paciente.
+3. Decisión de la biblioteca de acceso a datos (§7.1).
+4. Migrar la base remota (0001 y 0002), respaldar y probar la restauración.

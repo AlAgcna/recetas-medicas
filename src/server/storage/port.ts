@@ -29,6 +29,16 @@ export type AccessChallenge = {
   consumed: boolean;
 };
 
+// Enlace de ingreso de la médica. Se guarda el hash del token, nunca el token.
+export type AccessLink = {
+  /** SHA-256 del token en hexadecimal. */
+  tokenHash: string;
+  createdAt: number;
+  expiresAt: number;
+  /** Un enlace consumido no vuelve a servir. */
+  consumed: boolean;
+};
+
 export type AuditEvent = {
   actor: Role | 'system';
   action: string;
@@ -116,6 +126,18 @@ export interface Storage {
    * el acceso queda autorizado. Una sola operación condicional.
    */
   consumeChallenge(patientId: string, challengeId: string, matches: boolean, maxAttempts: number, at: number): Promise<boolean>;
+
+  // ── Ingreso de la médica ───────────────────────────────────────────────────
+  /** Reserva el próximo pedido de enlace. Una sola operación condicional. */
+  reserveAccessLinkRequest(reservedUntil: number, at: number): Promise<boolean>;
+  /** Instala el enlace vigente, invalidando cualquier anterior. */
+  putAccessLink(link: AccessLink): Promise<void>;
+  /**
+   * Consume el enlace sólo si sigue vigente y sin usar. Una sola operación
+   * condicional: dos pedidos simultáneos no pueden abrir dos sesiones con el
+   * mismo enlace.
+   */
+  consumeAccessLink(tokenHash: string, at: number): Promise<boolean>;
 
   // ── Auditoría ──────────────────────────────────────────────────────────────
   appendAudit(event: AuditEvent): Promise<void>;

@@ -21,16 +21,52 @@ legal ni certifican cumplimiento.
   generar gastos de mensajería.
 - Pérdida de D1, R2 o claves, registros excesivos y previews con datos reales
   pueden comprometer confidencialidad o disponibilidad.
+- Comprometer la casilla de correo de la médica equivale a robar su credencial
+  de ingreso: con enlace de acceso por correo (§2), esa casilla es el factor
+  único de autenticación profesional.
 
 ## 2. Autenticación profesional
 
+**Decisión adoptada con el usuario, 19 de octubre de 2026:** ingreso de la médica
+**sólo con enlace de un solo uso por correo** («magic link»), sin contraseña y sin
+segundo factor dentro del portal.
+
+Reglas que lo sostienen:
+
+- El enlace lo pide la médica; el servidor lo envía a una única casilla
+  configurada como secreto y nunca responde con el token.
+- 15 minutos de vigencia, un solo uso, un pedido de enlace por minuto; emitir
+  uno nuevo invalida el anterior. El consumo es atómico: dos usos simultáneos no
+  abren dos sesiones.
+- En la base queda sólo el hash SHA-256 del token; el token no aparece en
+  respuestas, en la auditoría ni en registros del servidor. El token viaja en el
+  fragmento de la URL (`/acceso#…`), que no llega al servidor con el `GET`.
+- Respuestas idénticas para «correo configurado», «correo no configurado»,
+  «enlace vencido» y «enlace inventado»: no revelan si existe la casilla.
+- Cookie de sesión `HttpOnly`, `Secure`, `SameSite=Strict` y con nombre sin el
+  prefijo `demo_` en producción, más los controles de origen de cada pedido.
+- La sesión profesional conserva la política de §4 (2 horas de inactividad; el
+  máximo absoluto sigue pendiente).
+
+**Riesgo aceptado explícitamente: la casilla de correo es la credencial
+principal.** Quien controle esa casilla entra al portal. Por eso son
+condiciones del modo elegido:
+
+- MFA en el proveedor de correo y en las cuentas de GitHub, Cloudflare y Meta,
+  con recuperación bajo titularidad acordada con el usuario.
+- Ante pérdida o compromiso de la casilla: revocación de sesiones y rotación de
+  secretos. El producto no tiene contraseña maestra ni código de recuperación.
+- Si el riesgo no le resulta aceptable a la médica, corresponde revisar esta
+  decisión antes de abrir producción y evaluar un segundo factor (autenticador
+  o passkey) con una biblioteca mantenida, tal como exigía este documento antes
+  de la decisión.
+
+Resto de la política profesional en vigor:
+
 - Cuenta personal de la única médica, sin credenciales compartidas.
-- Contraseña robusta y segundo factor: autenticador o passkey, a seleccionar.
 - Usar una biblioteca mantenida y compatible con Workers; no implementar
   algoritmos criptográficos propios ni simplificar el almacenamiento de claves
   para ajustarse a límites gratuitos.
-- Verificar almacenamiento de contraseñas con un algoritmo apropiado y costos
-  de ejecución reales en el entorno elegido.
 - Recuperación segura documentada, con revocación de sesiones cuando corresponda.
 - Las cuentas de GitHub, Cloudflare y Meta también necesitan MFA, acceso mínimo
   y recuperación bajo titularidad acordada con el usuario.
@@ -235,6 +271,12 @@ definir expiración, validación estricta y revocación sin incluir datos clíni
 - Enmienda de consulta finalizada: exige motivo, conserva el texto original,
   rechaza una versión ya reemplazada o de otra ficha y no duplica el registro
   profesional ni la estadística.
+- Enlace de ingreso de la médica: vencido, ya usado, reemplazado por uno nuevo,
+  emitido dentro del enfriamiento y con respuesta genérica sin existir casilla.
+- El enlace de la médica no aparece en la respuesta, en la auditoría ni en la
+  base: sólo su hash SHA-256.
+- Sesión profesional con cookie `Secure`, `HttpOnly` y sin prefijo de
+  demostración en la configuración de producción.
 - Restauración de datos y archivos en un entorno aislado autorizado.
 - Configuración de producción rechaza adaptadores simulados y bypass.
 
@@ -254,6 +296,12 @@ definir expiración, validación estricta y revocación sin incluir datos clíni
 - El portal entrega recetas de Digidoc y no se presenta como recetario propio
   autorizado. Emitir PDF, agregar firma o QR no demuestra validez de receta.
 - No utilizar «aceptar términos» como sustituto de todos los requisitos legales.
+- La URL pública de privacidad (`public/privacidad.html`, servida como
+  `/privacidad`) publica un aviso preliminar: identifica al responsable sin
+  nombre propio, enumera datos, finalidades, encargados (Cloudflare, WhatsApp de
+  Meta y proveedor de correo), conservación, seguridad y derechos, y no declara
+  cumplimiento ni certificación. Falta la revisión legal completa antes de
+  operar con datos reales.
 
 Referencias iniciales a revalidar:
 
@@ -265,9 +313,12 @@ Referencias iniciales a revalidar:
 ## 10. Lista de salida a producción
 
 - [ ] Responsable y titularidad de cuentas, dominio, claves y operación definidos.
+- [ ] Política de privacidad revisada y publicada con el responsable identificado.
 - [ ] Revisión legal aplicable, contratos y transferencias documentados.
 - [ ] Contactos verificados, recuperación y teléfonos compartidos resueltos.
-- [ ] Autenticación profesional con MFA y sesiones revocables probadas.
+- [ ] Ingreso de la médica probado de punta a punta, con la casilla de correo
+  protegida por MFA y sesiones revocables. El factor único del portal (§2) debe
+  quedar aceptado explícitamente por la médica antes de abrir.
 - [ ] API y plantilla de autenticación habilitadas para uso real y costos aprobados.
 - [ ] Permisos, tiempos, concurrencia y límites comprobados con pruebas.
 - [ ] Archivos privados, cargas seguras y política de publicación verificadas.

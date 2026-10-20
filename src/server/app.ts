@@ -8,20 +8,45 @@ import {
   type Consultation, type Patient, type Publication,
 } from '../shared/contracts';
 import { PdfInputError, pdfFromFile, prescriptionForm, sha256 } from './prescription-pdf';
+import type { SendEmail } from './email/port';
 import { monthlyStatistics } from './statistics';
 import { StorageConflict, type AccessSession, type Storage } from './storage/port';
 
 export type PortalEnv = { Variables: { session: AccessSession } };
 export type DeliverCode = (patient: Patient, code: string, expiresAt: number) => void | Promise<void>;
 export type HealthInfo = { mode: string; persistent: boolean; whatsapp: boolean };
+/** Nombre y requisitos de la cookie de sesión, distintos en demo y producción. */
+export type CookiePolicy = { prefix: string; secure: boolean };
+/** Cookies de la demostración: prefijo `demo_` y sin `Secure`, sólo para loopback HTTP. */
+export const demoCookies: CookiePolicy = { prefix: 'demo_', secure: false };
 export type AppOptions = {
   storage: Storage;
   origin: string;
   deliverCode: DeliverCode;
   health: HealthInfo;
   now?: () => number;
+  /**
+   * Envío del correo del portal. Sin él, y sin `doctorEmail`, el ingreso
+   * profesional responde 503 en lugar de fingir que envió algo.
+   */
+  sendEmail?: SendEmail;
+  /** Casilla de la médica: único destino del enlace de acceso. */
+  doctorEmail?: string;
+  /**
+   * Política de cookies. Por defecto la de producción: nombre sin prefijo y
+   * `Secure`. La demostración declara la suya (`demoCookies`) porque corre en
+   * loopback HTTP.
+   */
+  cookie?: CookiePolicy;
   /** Trabajo de arranque que debe terminar antes de atender el primer pedido. */
   ready?: Promise<unknown>;
+  /**
+   * Secreto del servidor que protege el verificador de los códigos de acceso.
+   * En producción llega como binding/secret y debe ser el mismo en todos los
+   * pedidos e instancias. Sin él se genera uno aleatorio por proceso, válido
+   * sólo para el prototipo y las pruebas.
+   */
+  challengeSecret?: string;
 };
 
 const encoder = new TextEncoder();
@@ -48,23 +73,28 @@ function otp() {
   return String(random % 1_000_000).padStart(6, '0');
 }
 
-const cookieName = (role: AccessSession['role']) => `demo_${role}`;
-function cookie(c: Context, value: string, session: AccessSession, now: number) {
-  // HTTP y nombre demo solo para loopback local. Producción no monta estas rutas.
-  setCookie(c, cookieName(session.role), value, {
-    httpOnly: true, sameSite: 'Strict', path: '/', secure: false,
-    maxAge: Math.max(0, Math.ceil((session.expiresAt - now) / 1000)),
-  });
-}
-
 async function body(c: Context) {
   return c.req.json().catch(() => null);
 }
 
 export function createApp(options: AppOptions) {
   const now = options.now ?? Date.now;
-  const { storage, origin } = options;
-  const secret = crypto.subtle.importKey('raw', crypto.getRandomValues(new Uint8Array(32)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+  const { storage, origin, sendEmail, doctorEmail } = options;
+  // Cookies de sesión. Por defecto, la política de producción; la demostración
+  // pide la suya porque corre en loopback HTTP.
+  const cookies = options.cookie ?? { prefix: '', secure: true };
+  const cookieName = (role: AccessSession['role']) => `${cookies.prefix}${role}`;
+  function cookie(c: Context, value: string, session: AccessSession) {
+    setCookie(c, cookieName(session.role), value, {
+      httpOnly: true, sameSite: 'Strict', path: '/', secure: cookies.secure,
+      maxAge: Math.max(0, Math.ceil((session.expiresAt - now()) / 1000)),
+    });
+  }
+  const secret = crypto.subtle.importKey(
+    'raw',
+    options.challengeSecret ? encoder.encode(options.challengeSecret) : crypto.getRandomValues(new Uint8Array(32)),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'],
+  );
   const app = new Hono<PortalEnv>();
   const audit = (actor: AccessSession['role'] | 'system', action: string, resource: string) =>
     storage.appendAudit({ actor, action, resource, at: now() });
@@ -120,7 +150,7 @@ export function createApp(options: AppOptions) {
       expiresAt: now() + (role === 'doctor' ? policy.doctorIdle : policy.patientLifetime),
     };
     await storage.putSession(await digest(value), session);
-    cookie(c, value, session, now());
+    cookie(c, value, session);
     await audit(role, 'session.created', role);
     return session;
   }
@@ -147,7 +177,7 @@ export function createApp(options: AppOptions) {
     const expiresAt = now() + policy.doctorIdle;
     if (!await storage.touchSession(await digest(value), expiresAt, now())) return;
     session.expiresAt = expiresAt;
-    cookie(c, value, session, now());
+    cookie(c, value, session);
   }
 
   // Detecta que la sesión dejó de ser la vigente durante una operación con `await`.
@@ -181,6 +211,49 @@ export function createApp(options: AppOptions) {
   }
 
   app.get('/api/health', c => c.json(options.health));
+
+  // ── Ingreso de la médica ───────────────────────────────────────────────────
+  // No hay contraseña: pide un enlace de un solo uso a su correo y con ese
+  // enlace abre su sesión. Las respuestas son siempre las mismas para no revelar
+  // si el correo está configurado, y el token nunca aparece en una respuesta.
+  const accessRequest = { message: 'Si el correo del consultorio está configurado, te enviamos un enlace de acceso.' };
+  app.post('/api/doctor/request-link', async c => {
+    if (!sendEmail || !doctorEmail) {
+      return c.json({ message: 'El ingreso por correo todavía no está configurado.' }, 503);
+    }
+    if (!withinLimit('access-links', 5, policy.accessLinkCooldown)) return c.json(accessRequest);
+    const at = now();
+    if (!await storage.reserveAccessLinkRequest(at + policy.accessLinkCooldown, at)) return c.json(accessRequest);
+    const value = token();
+    await storage.putAccessLink({
+      tokenHash: await digest(value), createdAt: at, expiresAt: at + policy.accessLinkLifetime, consumed: false,
+    });
+    const minutes = Math.round(policy.accessLinkLifetime / 60_000);
+    try {
+      await sendEmail({
+        to: doctorEmail,
+        subject: 'Acceso al portal del consultorio',
+        // El token viaja en el fragmento de la URL: no llega al servidor en el
+        // GET. Los escáneres de enlaces del proveedor de correo no lo consumen.
+        text: `Para entrar al portal, abrí este enlace:\n\n${origin}/acceso#${value}\n\n`
+          + `Vence en ${minutes} minutos y sirve una sola vez. Si no lo pediste, ignoralo.\n`,
+      });
+    } catch {
+      await audit('system', 'access-link.failed', 'doctor');
+      return c.json({ message: 'No pudimos enviar el correo. Probá de nuevo en unos minutos.' }, 502);
+    }
+    await audit('system', 'access-link.created', 'doctor');
+    return c.json(accessRequest);
+  });
+  app.post('/api/doctor/session', async c => {
+    const rejected = () => c.json({ message: 'El enlace no es válido, ya se usó o venció. Pedí uno nuevo.' }, 401);
+    if (!withinLimit('access-sessions', 20, policy.accessLinkCooldown)) return rejected();
+    const parsed = z.object({ token: z.string().regex(/^[0-9a-f]{64}$/) }).safeParse(await body(c));
+    if (!parsed.success) return rejected();
+    if (!await storage.consumeAccessLink(await digest(parsed.data.token), now())) return rejected();
+    const session = await openSession(c, 'doctor');
+    return c.json({ role: session.role, expiresAt: session.expiresAt });
+  });
 
   app.use('/api/doctor/*', authenticate('doctor'));
   app.get('/api/doctor/session', c => c.json({ role: 'doctor', expiresAt: c.get('session').expiresAt }));

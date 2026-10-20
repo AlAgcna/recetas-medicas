@@ -398,6 +398,35 @@ export function createD1Storage(db: SqlDatabase, bucket: FileBucket): Storage {
       return matches && Number(result.meta.changes) === 1;
     },
 
+    // ── Ingreso de la médica ───────────────────────────────────────────────────
+    async reserveAccessLinkRequest(reservedUntil, at) {
+      // Una sola sentencia: si el cooldown sigue vigente, la condición del
+      // upsert no se cumple y no se modifica ni se devuelve fila.
+      const row = await db.prepare(`INSERT INTO access_link_control (scope, next_request_at)
+        VALUES ('doctor', ?)
+        ON CONFLICT(scope) DO UPDATE SET next_request_at = excluded.next_request_at
+        WHERE access_link_control.next_request_at <= ?
+        RETURNING next_request_at`).bind(reservedUntil, at).first<Row>();
+      return row !== null;
+    },
+    async putAccessLink(link) {
+      // Un enlace nuevo invalida el anterior: se cierra el vigente y se inserta
+      // el nuevo en el mismo lote, para no chocar con el índice único parcial.
+      await db.batch([
+        db.prepare(`DELETE FROM access_links WHERE scope = 'doctor' AND consumed_at IS NULL`),
+        db.prepare(`INSERT INTO access_links (token_hash, scope, created_at, expires_at)
+          VALUES (?, 'doctor', ?, ?)`).bind(link.tokenHash, link.createdAt, link.expiresAt),
+      ]);
+    },
+    async consumeAccessLink(tokenHash, at) {
+      // Vencido o ya usado: sin cambios. Dos pedidos simultáneos con el mismo
+      // enlace no pueden consumirlo dos veces.
+      const result = await db.prepare(`UPDATE access_links SET consumed_at = ?
+        WHERE token_hash = ? AND scope = 'doctor' AND consumed_at IS NULL AND expires_at > ?`)
+        .bind(at, tokenHash, at).run();
+      return Number(result.meta.changes) === 1;
+    },
+
     // ── Auditoría ──────────────────────────────────────────────────────────────
     async appendAudit(event) {
       await db.prepare('INSERT INTO audit_events (actor, action, resource, at) VALUES (?, ?, ?, ?)')

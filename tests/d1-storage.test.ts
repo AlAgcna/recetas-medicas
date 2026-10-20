@@ -200,6 +200,23 @@ describe('adaptador D1: sesiones y acceso', () => {
     expect(await storage.reserveCodeRequest('patient-ana', AT + 2 * policy.codeCooldown, AT + policy.codeCooldown)).toBe(true);
   });
 
+  it('reserva el pedido de enlace, invalida el anterior y lo consume una sola vez', async () => {
+    const { storage } = await seed();
+    expect(await storage.reserveAccessLinkRequest(AT + policy.accessLinkCooldown, AT)).toBe(true);
+    expect(await storage.reserveAccessLinkRequest(AT + policy.accessLinkCooldown, AT + 1)).toBe(false);
+    expect(await storage.reserveAccessLinkRequest(AT + 2 * policy.accessLinkCooldown, AT + policy.accessLinkCooldown)).toBe(true);
+    const link = { tokenHash: 'a'.repeat(64), createdAt: AT, expiresAt: AT + policy.accessLinkLifetime, consumed: false };
+    await storage.putAccessLink(link);
+    // Emitir un enlace nuevo invalida el anterior.
+    await storage.putAccessLink({ ...link, tokenHash: 'b'.repeat(64) });
+    expect(await storage.consumeAccessLink('a'.repeat(64), AT + 1)).toBe(false);
+    // Vencido: no se consume. Vigente: se consume una sola vez.
+    expect(await storage.consumeAccessLink('b'.repeat(64), AT + policy.accessLinkLifetime)).toBe(false);
+    expect(await storage.consumeAccessLink('b'.repeat(64), AT + 2)).toBe(true);
+    expect(await storage.consumeAccessLink('b'.repeat(64), AT + 3)).toBe(false);
+    await storage.putAccessLink({ ...link, tokenHash: 'c'.repeat(64) });
+  });
+
   it('mantiene un solo desafío activo y cierra el código sólo al acertar', async () => {
     const { storage } = await seed();
     const challenge = { patientId: 'patient-ana', verifier: 'a'.repeat(64), createdAt: AT, expiresAt: AT + policy.codeLifetime, attempts: 0, consumed: false };

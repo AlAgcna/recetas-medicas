@@ -6,13 +6,19 @@ Se implementó la primera etapa de experiencia con React/TypeScript, Vite y una
 API local Hono. **No es un sistema habilitado para atención clínica.**
 
 - Todos los pacientes y documentos iniciales son ficticios.
-- La API guarda datos y sesiones **solo en la memoria de un proceso local**.
-- Reiniciar el servidor restaura los ejemplos y elimina todos los cambios.
+- `npm run dev` guarda datos y sesiones **solo en la memoria de un proceso local**.
+- Reiniciar el servidor demo restaura los ejemplos y elimina todos los cambios.
 - No se usa `localStorage` para sesiones o registros clínicos.
-- No hay D1, R2, recursos Cloudflare provisionados ni cuenta Meta. Existe el
-  esquema SQL local (`db/migrations`, ver `PERSISTENCIA.md`) con sus pruebas,
-  pero la aplicación todavía no lo usa ni hay nada desplegado.
-- No hay contraseñas, MFA, recuperación ni verificación real de contactos.
+- Existen D1 (`dranallim`) y el bucket privado R2 (`recetas`), creados por la
+  médica, y `wrangler.toml` ya declara sus bindings. La aplicación desplegada
+  sigue cerrada y todavía no los usa: no hay migración ni datos en la base
+  remota. No hay cuenta Meta ni WhatsApp habilitado.
+- Para probar la aplicación real sobre D1 y R2 hay una entrada local aparte
+  (ver «Persistencia local con D1 y R2»), que usa emuladores y el buzón simulado.
+- No hay contraseñas: el ingreso de la médica se pide con un enlace de un solo
+  uso enviado a su correo. Ese circuito existe en el servidor y en sus pruebas,
+  pero todavía no tiene pantalla ni entrada productiva. No hay MFA, recuperación
+  ni verificación real de contactos.
 - La entrada profesional demo y el buzón simulado son herramientas de prueba,
   no mecanismos de autenticación utilizables en producción.
 - No se adjuntan archivos reales. El Word es una referencia visual; el PDF se
@@ -48,6 +54,32 @@ por el proxy del mismo origen. Ambos escuchan solo en loopback. No ejecutar con
 
 Los cambios del servidor requieren reiniciar `npm run dev`; Vite actualiza solo
 la interfaz en caliente. Recordá que reiniciar descarta los datos temporales.
+
+## Persistencia local con D1 y R2
+
+`npm run dev` es el prototipo en memoria. Para ejercitar la aplicación real
+sobre los bindings D1/R2 sin tocar los recursos remotos hay una entrada de
+Worker local:
+
+```sh
+npx wrangler d1 migrations apply dranallim --local --config wrangler.local.toml
+npx wrangler dev --config wrangler.local.toml --port 8791
+```
+
+- Usa `wrangler.local.toml`, que no se despliega. `--local` guarda todo en
+  `.wrangler/state` y nunca alcanza la base ni el bucket remotos.
+- El puerto debe coincidir con `PORTAL_ORIGIN` de ese archivo: la aplicación
+  sólo acepta escrituras con su propio origen.
+- Conserva el ingreso profesional directo (`POST /api/demo/doctor-login`) y el
+  buzón simulado (`POST /api/demo/inbox`) para recorrer el flujo completo sin
+  WhatsApp. Ninguna de esas rutas se despliega.
+- El ingreso de la médica por correo también funciona sin proveedor: `GET
+  /api/demo/mailbox` devuelve el último mensaje con el enlace, que sirve para
+  probar `POST /api/doctor/request-link` y `POST /api/doctor/session`. En ese
+  entorno no se envía correo real.
+- Los datos sobreviven al reinicio de `wrangler dev`. Para empezar de cero,
+  borrar `.wrangler/state/v3`.
+- La interfaz de `npm run dev` sigue usando la API en memoria, no esta entrada.
 
 ## Recorridos disponibles
 
@@ -141,6 +173,8 @@ por WhatsApp ni recetas emitidas por el sistema.
 - Sesión de paciente de 20 minutos absolutos.
 - Sesión profesional de 2 horas de inactividad. Las interacciones recientes
   envían señales limitadas; el sondeo de sesión no la extiende.
+- Enlace de ingreso de la médica: un pedido procesable cada minuto, 15 minutos
+  de vigencia, un solo uso, y un enlace nuevo invalida el anterior.
 - El máximo absoluto profesional continúa pendiente.
 
 El servidor controla los vencimientos; el contador del navegador es orientativo.
@@ -149,7 +183,9 @@ y las operaciones críticas en memoria se revalidan tras las operaciones
 asíncronas. **Esto no implementa atomicidad distribuida en D1.**
 
 Las cookies demo son `HttpOnly` y `SameSite=Strict`, pero sin `Secure` porque se
-usa HTTP en loopback. Las cookies reales deberán usar HTTPS y `Secure`.
+usa HTTP en loopback y su nombre lleva el prefijo `demo_`. La política es un
+parámetro de `createApp` (`cookie`): producción pasa nombre sin prefijo y
+`Secure`, y esa condición está probada en `tests/d1-api.test.ts`.
 
 ## Verificaciones
 
@@ -180,17 +216,23 @@ npm run build
 
 ### Verificación del prototipo actualizado
 
-- 63 pruebas aprobadas con Vitest: 49 de API y reglas (estadísticas, coberturas,
-  sesiones, versión esperada, reemplazos concurrentes, historial, enmiendas de
-  consultas finalizadas, general para nuevos pacientes, aislamiento y descargas
-  de indicaciones activas) y 14 que cargan la migración D1 en SQLite local para
-  comprobar invariantes y operaciones condicionales (ver `PERSISTENCIA.md`).
+- 98 pruebas aprobadas con Vitest: 41 de la API y las reglas sobre el almacén en
+  memoria, 7 de estadísticas, 3 del catálogo de coberturas, 17 que cargan la
+  migración D1 en SQLite local para comprobar invariantes y operaciones
+  condicionales, 18 del adaptador D1/R2, 10 de la aplicación real montada sobre
+  D1 y 2 del adaptador de correo (ver `PERSISTENCIA.md`). Dos de ellas comprueban
+  que la aplicación armada por pedido sólo valida un código emitido en otro pedido
+  cuando comparte el secreto del servidor.
 - 12 recorridos aprobados con Chromium: los flujos previos más búsqueda de
   coberturas con teclado, publicación/reemplazo/descarga de general y específica,
   la enmienda de una consulta finalizada con su historial, y tres recorridos del
   borrador: guardado automático con hora visible, reintento tras un fallo de red y
   conservación del texto cuando la sesión venció.
 - Comprobación de tipos, build y exclusión de módulos demo de producción aprobados.
+- Verificación manual contra D1 y R2 emulados por miniflare, incluida la
+  persistencia después de reiniciar el proceso y el ingreso completo de la médica
+  (pedido de enlace, buzón simulado, apertura de sesión, rechazo de un segundo
+  uso y de un token inventado). Ver `PERSISTENCIA.md`.
 - Smoke HTTP de interfaz, proxy y cookies aprobado.
 - Auditoría npm sin vulnerabilidades reportadas al realizar esta entrega.
 
@@ -204,15 +246,26 @@ seguridad, disponibilidad o cumplimiento legal de un sistema productivo.
 
 - `scripts/dev.ts` es la única entrada del servidor demo y rechaza
   `NODE_ENV=production`.
-- `src/server/demo/` no se importa desde la entrada de Workers.
+- `src/server/demo/` no se importa desde la entrada de producción. Su
+  `worker.ts` es una entrada **sólo local** (D1/R2 emulados) que se levanta con
+  `wrangler.local.toml` y nunca se despliega.
 - `src/server/index.ts` devuelve 503 para todas las rutas, incluidas las de demo.
 - `src/web/main.tsx` solo importa las pantallas de demostración cuando Vite está
   en desarrollo. El build muestra «Servicio todavía no habilitado».
 - `npm run preview` sirve esa pantalla cerrada, no el prototipo interactivo.
-- `wrangler.toml` configura el Worker `recetas-medicas` con la entrada cerrada y
-  los estáticos de `dist`. Las rutas `/api` y `/api/*` pasan siempre por el Worker
-  (503); el resto sirve la pantalla «Servicio todavía no habilitado».
-- Todavía no hay bindings D1/R2 ni autenticación productiva conectados.
+- `public/privacidad.html` se publica como `/privacidad`, sin JavaScript, y es la
+  URL de políticas de privacidad que exige la revisión de la app de Meta. Es la
+  única página pública además de la pantalla cerrada: no habilita el portal ni la
+  API. El texto es preliminar (responsable sin nombre propio y
+  `dranallim@gmail.com` como contacto) y todavía necesita revisión legal; hoy no
+  declara cumplimiento.
+- `wrangler.toml` configura el Worker `recetas-medicas` con la entrada cerrada,
+  los estáticos de `dist` y los bindings D1/R2. Las rutas `/api` y `/api/*` pasan
+  siempre por el Worker (503); el resto sirve la pantalla «Servicio todavía no
+  habilitado».
+- La entrada cerrada todavía no usa los bindings ni monta el ingreso de la
+  médica, aunque las rutas, el adaptador de correo y el esquema ya existen:
+  faltan secretos, la política de cookies de producción y la pantalla de ingreso.
 
 ### Configuración de Cloudflare Workers Builds
 
@@ -233,22 +286,26 @@ npm run build
 npx wrangler deploy --dry-run
 ```
 
-No eliminar estos bloqueos para publicar la demo. La siguiente etapa debe
-implementar autenticación profesional real, los adaptadores de persistencia (el
-esquema ya está escrito), permisos y archivos privados sobre los servicios
-acordados, y después validar la integración oficial de WhatsApp. Mantener los
-controles de `SEGURIDAD.md` como puertas de producción.
+No eliminar estos bloqueos para publicar la demo. La siguiente etapa debe montar
+en la entrada productiva el ingreso de la médica y los adaptadores de
+persistencia (el esquema ya está escrito), permisos y archivos privados sobre
+los servicios acordados, y después validar la integración oficial de WhatsApp.
+Mantener los controles de `SEGURIDAD.md` como puertas de producción.
 
 ## Organización actual
 
 ```text
 db/migrations/        esquema D1 revisado (SQL) y verificado con SQLite local
+public/               página pública de privacidad (HTML, sin JavaScript)
 scripts/              arranque local y comprobación del build
 src/shared/           contratos Zod y reglas temporales
-src/server/demo/      servidor y almacenamiento ficticios, solo local
+src/server/d1/        adaptador de D1 y R2
+src/server/demo/      almacén y servidor ficticios, más la entrada local con D1/R2
 src/server/index.ts   entrada de producción cerrada
 src/web/              pantallas y estilos del prototipo
 tests/                pruebas de API, recorridos de navegador y de persistencia
+wrangler.toml         entrada desplegada (cerrada) y bindings D1/R2
+wrangler.local.toml   entrada de desarrollo con D1 y R2 emulados
 ```
 
 ### Recursos de marca

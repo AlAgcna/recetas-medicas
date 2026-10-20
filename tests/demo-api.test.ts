@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createApp } from '../src/server/app';
 import { createDemoApp } from '../src/server/demo/app';
+import { createMemoryStorage } from '../src/server/demo/storage';
+import { createStore } from '../src/server/demo/store';
 import productionApp from '../src/server/index';
 import { consultationSchema, patientSchema, policy } from '../src/shared/contracts';
 import { examplePdf } from '../src/server/demo/pdf';
@@ -36,12 +39,18 @@ describe('aislamiento y sesiones del prototipo', () => {
     expect((await h.request('GET', '/api/patient/publications')).status).toBe(401);
   });
 
-  it('usa cookies HttpOnly y SameSite; no guarda el token utilizable en el servidor', async () => {
+  it('usa cookies HttpOnly, SameSite y de demostración; no guarda el token utilizable en el servidor', async () => {
     const h = harness();
     const response = await h.request('POST', '/api/demo/doctor-login');
-    expect(response.headers.get('set-cookie')).toContain('HttpOnly');
-    expect(response.headers.get('set-cookie')).toContain('SameSite=Strict');
-    const raw = response.headers.get('set-cookie')!.split(';')[0].split('=')[1];
+    const header = response.headers.get('set-cookie')!;
+    expect(header).toContain('HttpOnly');
+    expect(header).toContain('SameSite=Strict');
+    // La demo corre por HTTP en loopback: es la única que pide cookies sin
+    // `Secure` y con el prefijo `demo_`; la política por defecto es la de
+    // producción (ver `tests/d1-api.test.ts`).
+    expect(header).toContain('demo_doctor=');
+    expect(header).not.toContain('Secure');
+    const raw = header.split(';')[0].split('=')[1];
     expect(h.store.sessions.has(raw)).toBe(false);
   });
 
@@ -525,5 +534,39 @@ describe('validación, CSRF y cierre de producción', () => {
     vi.stubEnv('NODE_ENV', 'production');
     try { expect(() => createDemoApp()).toThrow('Simulación no permitida en producción.'); }
     finally { vi.unstubAllEnvs(); }
+  });
+});
+
+// La entrada de un Worker arma la aplicación por pedido, porque los bindings
+// viven en `env`. El verificador de los códigos depende de un secreto estable:
+// sin él, el código emitido en un pedido no se podría validar en el siguiente.
+describe('la aplicación se arma por pedido con un secreto estable', () => {
+  function perRequest(challengeSecret: string) {
+    const now = () => Date.parse('2026-10-19T12:00:00Z');
+    const storage = createMemoryStorage(createStore(now()));
+    let delivered = '';
+    const request = (secret: string, path: string, body: unknown) => createApp({
+      storage, now, origin: 'http://localhost', challengeSecret: secret,
+      health: { mode: 'test', persistent: true, whatsapp: false },
+      deliverCode(_patient, code) { delivered = code; },
+    }).app.request(`http://localhost${path}`, {
+      method: 'POST', headers: { Origin: 'http://localhost', 'X-Portal-Request': '1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { request, code: () => delivered, secret: challengeSecret };
+  }
+
+  it('un código emitido en un pedido se valida en el pedido siguiente', async () => {
+    const runner = perRequest('secreto-estable-de-prueba');
+    expect((await runner.request(runner.secret, '/api/patient/request-code', { dni: '00000001' })).status).toBe(200);
+    const verified = await runner.request(runner.secret, '/api/patient/verify-code', { dni: '00000001', code: runner.code() });
+    expect(verified.status).toBe(200);
+  });
+
+  it('con otro secreto el código emitido no valida', async () => {
+    const issued = perRequest('secreto-estable-de-prueba');
+    await issued.request(issued.secret, '/api/patient/request-code', { dni: '00000001' });
+    const foreign = perRequest('otro-secreto');
+    expect((await foreign.request(foreign.secret, '/api/patient/verify-code', { dni: '00000001', code: issued.code() })).status).toBe(401);
   });
 });

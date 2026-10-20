@@ -29,13 +29,17 @@ Navegador de la médica                 Navegador del paciente
           | Hono + TypeScript (API y controles)
           |
           +-- D1: pacientes, consultas, publicaciones,
-          |       sesiones, desafíos OTP y auditoría
+          |       sesiones, desafíos OTP, enlaces de acceso y auditoría
           |
           +-- R2 privado: Word, PDF y otros adjuntos
           |
           +-- WhatsApp Cloud API: códigos al contacto verificado
                          |
                     WhatsApp del paciente
+
+          +-- Resend: enlace de acceso a la casilla de la médica
+                         |
+                    Correo de la médica
 
 Digidoc -- PDF original cargado por la médica --> R2 privado
 
@@ -59,8 +63,9 @@ públicos: su descarga pasa por autorización.
 | Acceso a datos | SQL parametrizado detrás de `src/server/storage/port.ts` | Migraciones SQL a mano; el ORM queda por decidir (`PERSISTENCIA.md` §7). D1 no expone transacciones interactivas: usar `batch()` y sentencias condicionales |
 | Validación | Zod, propuesto | Validación obligatoria en el servidor |
 | Archivos | Cloudflare R2 privado | Sin acceso público permanente |
-| Autenticación | Biblioteca mantenida por seleccionar | Sesiones en servidor; MFA profesional y OTP al paciente |
+| Autenticación | Enlace de un solo uso por correo para la médica; OTP por WhatsApp para el paciente | Sesiones en servidor. El único factor profesional, con la casilla de correo como credencial principal, está decidido y con riesgo explícito en `SEGURIDAD.md` §2 |
 | Mensajería | WhatsApp Business Platform / Cloud API | API oficial; plantillas y habilitación según Meta |
+| Correo | Resend (`src/server/email/`) | Sólo texto y una única casilla; cuenta sin dominio propio limita el remitente de pruebas al correo dueño de la cuenta |
 | Pruebas | Vitest + Playwright, propuestos | Reglas, integración y recorridos de navegador |
 | Versionado | GitHub privado, previsto | Gestión manual de add/commit/push por el usuario |
 
@@ -223,6 +228,30 @@ completas desde endpoints públicos.
   token temporal de demostración.
 - No usar automatización no oficial de WhatsApp Web ni depender de una PC
   prendida para que el paciente reciba el código.
+- Se evaluó y descartó una pasarela no oficial autoalojada (por ejemplo OpenWA,
+  apoyada en `whatsapp-web.js` o Baileys): su propio README advierte riesgo de
+  bloqueo del número, pide usar un número descartable y declara que en salud
+  «no está aprobada» en lugar de la Cloud API oficial. Además exigiría un
+  servidor propio con una sesión vinculada por QR, lo que contradice el requisito
+  de no depender de una PC para entregar el código.
+
+### Correo
+
+- Resend envía el enlace de ingreso de la médica. `RESEND_API_KEY` y
+  `DOCTOR_EMAIL` son secretos del Worker: cargados por el usuario, nunca en el
+  repositorio ni en el bundle.
+- La aplicación sólo pide entregar un mensaje (`src/server/email/port.ts`); el
+  adaptador es `src/server/email/resend.ts` y se prueba con `fetch` inyectado,
+  sin red. Un fallo del proveedor responde 502 y no deja un enlace sin enviar.
+- La cuenta no tiene dominio propio, así que el remitente de pruebas
+  `onboarding@resend.dev` sólo entrega al correo dueño de la cuenta de Resend.
+  Si `DOCTOR_EMAIL` es otra dirección, el envío falla y la médica no recibe nada:
+  verificar ese dato antes de abrir el ingreso.
+- El mensaje lleva únicamente el enlace de acceso, en texto plano y sin adjuntos
+  ni datos clínicos; el token va en el fragmento de la URL, que no llega al
+  servidor con el `GET` ni lo consumen los escáneres de enlaces del correo.
+- Los límites (un pedido por minuto, 15 minutos de vigencia, un solo uso) están
+  en `policy` de `src/shared/contracts.ts` y se aplican en el servidor.
 
 ### Digidoc
 

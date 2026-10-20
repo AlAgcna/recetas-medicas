@@ -52,20 +52,25 @@ function addChallenge(db: DatabaseSync, id: string, patientId = 'p1') {
     .run(id, patientId, 'b'.repeat(64));
 }
 
+function addLink(db: DatabaseSync, hash: string) {
+  return db.prepare("INSERT INTO access_links (token_hash, scope, created_at, expires_at) VALUES (?, 'doctor', 0, 600000)")
+    .run(hash);
+}
+
 describe('migración inicial', () => {
   it('crea las tablas del modelo y los índices parciales de los invariantes', () => {
     const db = migrate();
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all()
       .map(row => String(row.name)).sort();
     expect(tables).toEqual([
-      'access_challenges', 'audit_events', 'code_request_control', 'consultations',
-      'documents', 'patients', 'publications', 'sessions',
+      'access_challenges', 'access_link_control', 'access_links', 'audit_events',
+      'code_request_control', 'consultations', 'documents', 'patients', 'publications', 'sessions',
     ]);
     const indexes = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'index'").all()
       .filter(row => String(row.sql).includes('WHERE'))
       .map(row => String(row.name));
     expect(indexes).toEqual(expect.arrayContaining([
-      'access_challenges_active', 'consultations_current', 'consultations_single_successor',
+      'access_challenges_active', 'access_links_active', 'consultations_current', 'consultations_single_successor',
       'publications_active_general', 'publications_active_patient_indication',
     ]));
   });
@@ -171,6 +176,39 @@ describe('enmiendas de consultas', () => {
     // Un borrador no puede quedar marcado como reemplazado.
     addConsultation(db, 'b1', 'b1', 'draft');
     expect(() => supersede(db, 'b1', 9)).toThrow(/CHECK constraint failed/);
+  });
+});
+
+describe('acceso de la médica', () => {
+  it('mantiene un solo enlace vigente y libera el lugar al consumirlo', () => {
+    const db = migrate();
+    const consume = db.prepare('UPDATE access_links SET consumed_at = ? WHERE token_hash = ? AND scope = \'doctor\' AND consumed_at IS NULL AND expires_at > ?');
+    addLink(db, 'a'.repeat(64));
+    expect(() => addLink(db, 'b'.repeat(64))).toThrow(/UNIQUE constraint failed: access_links.scope/);
+    // Un enlace vencido no se consume; uno consumido no vuelve a servir.
+    expect(consume.run(10, 'a'.repeat(64), 600_001).changes).toBe(0);
+    expect(consume.run(10, 'a'.repeat(64), 10).changes).toBe(1);
+    expect(consume.run(11, 'a'.repeat(64), 11).changes).toBe(0);
+    // Ya consumido, el siguiente enlace ocupa su lugar.
+    addLink(db, 'c'.repeat(64));
+    expect(db.prepare("SELECT count(*) AS total FROM access_links WHERE consumed_at IS NULL").get()).toEqual({ total: 1 });
+  });
+
+  it('exige hash SHA-256, vencimiento posterior y el único ámbito de la médica', () => {
+    const db = migrate();
+    expect(() => addLink(db, 'corto')).toThrow(/CHECK constraint failed/);
+    expect(() => db.prepare("INSERT INTO access_links (token_hash, scope, created_at, expires_at) VALUES (?, 'doctor', 100, 100)").run('d'.repeat(64)))
+      .toThrow(/CHECK constraint failed/);
+    expect(() => db.prepare("INSERT INTO access_links (token_hash, scope, created_at, expires_at) VALUES (?, 'patient', 0, 100)").run('e'.repeat(64)))
+      .toThrow(/CHECK constraint failed/);
+  });
+
+  it('reserva el próximo pedido de enlace en una sola sentencia condicional', () => {
+    const db = migrate();
+    const reserve = db.prepare("INSERT INTO access_link_control (scope, next_request_at) VALUES ('doctor', ?) ON CONFLICT(scope) DO UPDATE SET next_request_at = excluded.next_request_at WHERE access_link_control.next_request_at <= ? RETURNING next_request_at");
+    expect(reserve.get(60_000, 1_000)).toEqual({ next_request_at: 60_000 });
+    expect(reserve.get(60_000, 2_000)).toBeUndefined();
+    expect(reserve.get(120_000, 60_000)).toEqual({ next_request_at: 120_000 });
   });
 });
 

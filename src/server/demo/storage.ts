@@ -153,6 +153,27 @@ export function createMemoryStorage(state: DemoStore): Storage {
       return true;
     },
 
+    // ── Ingreso de la médica ───────────────────────────────────────────────────
+    async reserveAccessLinkRequest(reservedUntil, at) {
+      if ((state.accessLinkRequests.get('doctor') ?? 0) > at) return false;
+      state.accessLinkRequests.set('doctor', reservedUntil);
+      return true;
+    },
+    async putAccessLink(link) {
+      // Un enlace nuevo invalida el anterior, igual que un código nuevo invalida
+      // el desafío previo.
+      for (const [hash, existing] of state.accessLinks) {
+        if (!existing.consumed) state.accessLinks.delete(hash);
+      }
+      state.accessLinks.set(link.tokenHash, link);
+    },
+    async consumeAccessLink(tokenHash, at) {
+      const link = state.accessLinks.get(tokenHash);
+      if (!link || link.consumed || link.expiresAt <= at) return false;
+      link.consumed = true;
+      return true;
+    },
+
     // ── Auditoría ──────────────────────────────────────────────────────────────
     async appendAudit(event) {
       state.audit.push(event);

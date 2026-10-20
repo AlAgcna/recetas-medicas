@@ -1,0 +1,29 @@
+# Sólo desarrollo local: la aplicación real sobre D1 y R2 emulados por miniflare,
+# con el buzón simulado de la demostración. No se despliega.
+#
+#   npx wrangler d1 migrations apply dranallim --local --config wrangler.local.toml
+#   npx wrangler dev --config wrangler.local.toml --port 8791
+#
+# El puerto debe coincidir con PORTAL_ORIGIN: la aplicación sólo acepta
+# escrituras cuyo origen sea el propio. Los bindings se repiten porque cada
+# archivo de configuración de wrangler es independiente; apuntan a los mismos
+# recursos, pero `--local` nunca alcanza los datos remotos.
+name = "recetas-medicas-local"
+main = "src/server/demo/worker.ts"
+compatibility_date = "2026-10-19"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dranallim"
+database_id = "2f0372ff-8366-419e-bf10-23edef40baf2"
+migrations_dir = "db/migrations"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "recetas"
+
+[vars]
+PORTAL_ORIGIN = "http://127.0.0.1:8791"
+
+[dev]
+ip = "127.0.0.1"

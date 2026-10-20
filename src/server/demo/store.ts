@@ -1,5 +1,6 @@
 import { today, type Consultation, type InternalDocument, type Patient, type Publication } from '../../shared/contracts';
-import type { AccessChallenge, AccessSession, AuditEvent } from '../storage/port';
+import type { OutgoingEmail } from '../email/port';
+import type { AccessChallenge, AccessLink, AccessSession, AuditEvent } from '../storage/port';
 
 // Estado del almacén en memoria. Es el banco de pruebas del prototipo local:
 // las pruebas de la API inicializan y consultan estas colecciones directamente.
@@ -36,7 +37,11 @@ export function createStore(now: number) {
     sessions: new Map<string, AccessSession>(),
     challenges: new Map<string, AccessChallenge>(),
     codeRequests: new Map<string, number>(),
+    accessLinks: new Map<string, AccessLink>(),
+    accessLinkRequests: new Map<string, number>(),
     inbox: new Map<string, { code: string; expiresAt: number }>(),
+    /** Correo saliente simulado: reemplaza al proveedor en el prototipo local. */
+    mailbox: [] as OutgoingEmail[],
     audit: [] as AuditEvent[],
   };
 }

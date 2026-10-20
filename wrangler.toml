@@ -3,6 +3,19 @@ name = "recetas-medicas"
 main = "src/server/index.ts"
 compatibility_date = "2026-10-19"
 
+# Recursos creados por la médica el 19 de octubre de 2026. La entrada desplegada
+# todavía no los usa: sigue respondiendo 503 hasta que existan la autenticación
+# profesional y WhatsApp (ver docs/PERSISTENCIA.md y docs/SEGURIDAD.md).
+[[d1_databases]]
+binding = "DB"
+database_name = "dranallim"
+database_id = "2f0372ff-8366-419e-bf10-23edef40baf2"
+migrations_dir = "db/migrations"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "recetas"
+
 [assets]
 directory = "./dist"
 not_found_handling = "single-page-application"
