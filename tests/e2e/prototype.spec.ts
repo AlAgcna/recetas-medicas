@@ -15,6 +15,9 @@ async function enterPatient(page: Page, dni: string) {
   await page.goto('/pacientes/ingreso');
   await page.getByLabel('DNI', { exact: true }).fill(dni);
   await page.getByRole('button', { name: 'Solicitar código', exact: true }).click();
+  // El buzón simulado pide el DNI otra vez: es una pieza aparte del ingreso real,
+  // que en producción no existe.
+  await page.locator('.demo-inbox').getByLabel('DNI').fill(dni);
   await page.getByRole('button', { name: 'Ver mensaje simulado' }).click();
   await page.getByLabel('Código de acceso', { exact: true }).fill((await page.locator('.demo-code strong').textContent())!);
   await page.getByRole('button', { name: 'Entrar a mi portal' }).click();
@@ -152,13 +155,7 @@ test('vista previa, publicación y acceso autónomo con código simulado', async
   await page.getByLabel('Confirmo el reemplazo de la indicación específica activa y su conservación en el historial.', { exact: true }).check();
   await page.getByRole('button', { name: 'Confirmar publicación' }).click();
   await expect(page.getByText('Documento publicado. El paciente puede acceder sin autorización adicional.')).toBeVisible();
-  await page.goto('/pacientes/ingreso');
-  await page.getByLabel('DNI', { exact: true }).fill('00000001');
-  await page.getByRole('button', { name: 'Solicitar código', exact: true }).click();
-  await page.getByRole('button', { name: 'Ver mensaje simulado' }).click();
-  const code = (await page.locator('.demo-code strong').textContent())!;
-  await page.getByLabel('Código de acceso', { exact: true }).fill(code);
-  await page.getByRole('button', { name: 'Entrar a mi portal' }).click();
+  await enterPatient(page, '00000001');
   await expect(page.getByRole('heading', { name: 'Hola, Ana', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Entrega de prueba del recorrido', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Indicaciones', exact: true })).toBeVisible();
@@ -226,12 +223,7 @@ test('estadísticas mensuales, pacientes únicos y mes sin consultas', async ({ 
 
 test('las recetas PDF siguen disponibles para descargar desde el celular', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/pacientes/ingreso');
-  await page.getByLabel('DNI', { exact: true }).fill('00000002');
-  await page.getByRole('button', { name: 'Solicitar código', exact: true }).click();
-  await page.getByRole('button', { name: 'Ver mensaje simulado' }).click();
-  await page.getByLabel('Código de acceso', { exact: true }).fill((await page.locator('.demo-code strong').textContent())!);
-  await page.getByRole('button', { name: 'Entrar a mi portal' }).click();
+  await enterPatient(page, '00000002');
   await expect(page.getByRole('heading', { name: 'Recetas', exact: true })).toBeVisible();
   const download = page.waitForEvent('download');
   await page.getByRole('link', { name: 'Descargar receta (PDF)', exact: true }).click();

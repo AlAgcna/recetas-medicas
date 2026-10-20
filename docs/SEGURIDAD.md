@@ -81,8 +81,11 @@ Resto de la política profesional en vigor:
 - Cambios de número auditados; invalidar desafíos pendientes del contacto previo
   y revocar sesiones de paciente como política inicial de protección.
 - Definir tratamiento de teléfonos compartidos, perdidos o reasignados antes
-  de habilitar acceso real. WhatsApp OTP acredita control del contacto registrado,
-  no una identidad civil verificada independientemente en cada ingreso.
+  de habilitar acceso real. El código por SMS acredita control del contacto
+  registrado, no una identidad civil verificada independientemente en cada
+  ingreso. Un SMS puede leerse desde la pantalla de bloqueo de un teléfono
+  perdido: por eso el mensaje lleva sólo el código y ningún dato clínico, y la
+  sesión del paciente vence por inactividad.
 
 ### Emisión y verificación
 
@@ -102,7 +105,8 @@ Resto de la política profesional en vigor:
   sesión ni permitir reintentos ilimitados o mensajes duplicados. Los reintentos
   técnicos limitados de un mismo envío no son desafíos nuevos.
 - Si un mensaje llega después del vencimiento, el código no funciona; la entrega
-  o lectura reportada por Meta no concede acceso.
+  o lectura reportada por el proveedor de SMS no concede acceso. Un fallo de
+  entrega registrado como `challenge.delivery-failed` no crea sesión.
 
 ### Protección de abuso y privacidad
 
@@ -249,8 +253,8 @@ definir expiración, validación estricta y revocación sin incluir datos clíni
 - Código vencido, incorrecto, consumido, reemplazado y quinto intento fallido.
 - Dos validaciones concurrentes: como máximo una crea acceso con el mismo OTP.
 - Emisiones concurrentes y cambio de navegador no eluden los 5 minutos.
-- Fallos/reintentos/webhooks duplicados de Meta no abren sesiones ni multiplican
-  mensajes o códigos de forma no controlada.
+- Fallos, reintentos o webhooks duplicados del proveedor de SMS no abren sesiones
+  ni multiplican mensajes o códigos de forma no controlada.
 - DNI desconocido y límites no revelan existencia, teléfono ni datos clínicos.
 - Paciente A no lista, ve, descarga ni modifica recursos del paciente B.
 - Pacientes y visitantes no obtienen estadísticas profesionales. La respuesta
@@ -300,8 +304,8 @@ definir expiración, validación estricta y revocación sin incluir datos clíni
   (política de privacidad), `/condiciones` (condiciones del servicio) y
   `/eliminacion-de-datos` (instrucciones de eliminación de datos), servidas desde
   `public/` sin JavaScript — publican textos preliminares: responsable sin nombre
-  propio, datos, finalidades, encargados (Cloudflare, WhatsApp de Meta y proveedor
-  de correo), conservación, seguridad y derechos, sin promesa de disponibilidad ni
+  propio, datos, finalidades, encargados (Cloudflare, Twilio para el SMS del
+  código y proveedor de correo), conservación, seguridad y derechos, sin promesa de disponibilidad ni
   declaración de cumplimiento ni certificación. La eliminación que anuncian es hoy
   un procedimiento manual del consultorio: la herramienta de borrado todavía no
   existe en el producto (§10). Falta la revisión legal completa antes de operar

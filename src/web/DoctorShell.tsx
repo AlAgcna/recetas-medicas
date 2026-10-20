@@ -5,27 +5,33 @@ import type { SessionInfo } from '../shared/contracts';
 import { api, ApiError, messageOf } from './api';
 import { Alert, Brand, Loading, minutesLeft, useClock } from './ui';
 
+/**
+ * Ingreso real de la médica: no hay contraseña, pide un enlace de un solo uso a
+ * su correo y el enlace abre la sesión en `/acceso`.
+ */
 export function DoctorLogin() {
-  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  async function enter() {
+  const [sent, setSent] = useState(false);
+  async function requestLink() {
     setBusy(true); setError('');
-    try { await api('/api/demo/doctor-login', { method: 'POST' }); navigate('/profesional'); }
+    try { await api('/api/doctor/request-link', { method: 'POST' }); setSent(true); }
     catch (error) { setError(messageOf(error)); }
     finally { setBusy(false); }
   }
   return <div className="public-page"><header className="public-header"><Brand /></header><main className="access-card">
-    <span className="entry-icon"><ShieldCheck /></span><span className="eyebrow">ÁREA PROFESIONAL · DEMOSTRACIÓN</span>
-    <h1>Conocé tu consultorio</h1><p>Probá las pantallas con pacientes ficticios. Este ingreso de demostración no utiliza contraseñas ni segundo factor.</p>
-    <Alert>La autenticación profesional real todavía no está implementada. No cargues datos de pacientes.</Alert>
+    <span className="entry-icon"><ShieldCheck /></span><span className="eyebrow">ÁREA PROFESIONAL</span>
+    <h1>Ingresá a tu consultorio</h1>
+    <p>No hay contraseña: te enviamos un enlace de un solo uso al correo del consultorio. Dura 15 minutos y sirve una vez.</p>
     {error && <Alert>{error}</Alert>}
-    <button className="button primary full" disabled={busy} onClick={enter}>{busy ? 'Abriendo…' : 'Entrar a la demostración'}</button>
+    {sent
+      ? <Alert success>Si el correo del consultorio está configurado, te enviamos un enlace. Revisá tu casilla y abrí el enlace para entrar.</Alert>
+      : <button className="button primary full" disabled={busy} onClick={requestLink}>{busy ? 'Enviando…' : 'Enviar enlace de acceso'}</button>}
     <Link className="text-link" to="/">Volver al inicio</Link>
   </main></div>;
 }
 
-export function DoctorShell() {
+export function DoctorShell({ demo = false }: { demo?: boolean } = {}) {
   const [session, setSession] = useState<SessionInfo | null>();
   const [error, setError] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
@@ -89,7 +95,7 @@ export function DoctorShell() {
       <Brand />
       <div className="sidebar-label">MI CONSULTORIO</div>
       <nav aria-label="Navegación profesional"><Link to="/profesional" className={`nav-link${statisticsActive || generalActive ? '' : ' active'}`} aria-current={statisticsActive || generalActive ? undefined : 'page'}><Users size={21} /> Pacientes</Link><Link to="/profesional/indicacion-general" className={`nav-link${generalActive ? ' active' : ''}`} aria-current={generalActive ? 'page' : undefined}><FileText size={21} /> Indicación general</Link><Link to="/profesional/estadisticas" className={`nav-link${statisticsActive ? ' active' : ''}`} aria-current={statisticsActive ? 'page' : undefined}><BarChart3 size={21} /> Estadísticas</Link><Link to="/pacientes/ingreso" className="nav-link"><ExternalLink size={20} /> Ver portal del paciente</Link></nav>
-      <div className="sidebar-bottom"><div className="session-label"><Clock3 size={18} /><span>Cierre por inactividad<br /><strong>Hasta {Math.min(120, minutesLeft(session.expiresAt, now))} min</strong></span></div><button className="nav-link logout" onClick={logout} disabled={loggingOut}><LogOut size={20} /> Cerrar sesión</button><span className="sidebar-footnote">La Rioja, Argentina<br />Entorno de demostración</span></div>
+      <div className="sidebar-bottom"><div className="session-label"><Clock3 size={18} /><span>Cierre por inactividad<br /><strong>Hasta {Math.min(120, minutesLeft(session.expiresAt, now))} min</strong></span></div><button className="nav-link logout" onClick={logout} disabled={loggingOut}><LogOut size={20} /> Cerrar sesión</button><span className="sidebar-footnote">La Rioja, Argentina<br />{demo ? 'Entorno de demostración' : 'Portal del consultorio'}</span></div>
     </aside>
     <div className="workspace-body">
       <header className="workspace-topbar"><span><span className="status-dot" /> Panel profesional</span><span className="professional-avatar">M</span></header>

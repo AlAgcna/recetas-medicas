@@ -7,15 +7,8 @@ if (import.meta.env.DEV) {
   // Vite elimina esta rama y todos sus módulos del bundle de producción.
   void import('./DemoApp').then(({ DemoApp }) => root.render(<DemoApp />));
 } else {
-  root.render(
-    <main className="locked-page">
-      <span className="eyebrow">PORTAL CLÍNICO</span>
-      <h1>Servicio todavía no habilitado</h1>
-      <p>Este desarrollo está en etapa de prototipo local. No ingreses datos personales o médicos.</p>
-      <p className="locked-link">
-        <a href="/privacidad">Política de privacidad</a> · <a href="/condiciones">Condiciones del servicio</a> ·{' '}
-        <a href="/eliminacion-de-datos">Eliminación de datos</a>
-      </p>
-    </main>,
-  );
+  // Producción: mismas pantallas que la demostración, pero con el ingreso real
+  // (enlace por correo para la médica y código por SMS para el paciente) y sin
+  // los atajos simulados. El enrutador y las rutas viven en `ProductionApp`.
+  void import('./ProductionApp').then(({ ProductionApp }) => root.render(<ProductionApp />));
 }

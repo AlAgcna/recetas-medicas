@@ -1,11 +1,10 @@
-# Entrada cerrada: publica la pantalla de espera, no el prototipo clínico.
+# Entrada de producción: sirve la aplicación real (ingreso de la médica por
+# enlace de correo y del paciente por código SMS) sobre D1 y R2.
 name = "recetas-medicas"
 main = "src/server/index.ts"
 compatibility_date = "2026-10-19"
 
-# Recursos creados por la médica el 19 de octubre de 2026. La entrada desplegada
-# todavía no los usa: sigue respondiendo 503 hasta que existan la autenticación
-# profesional y WhatsApp (ver docs/PERSISTENCIA.md y docs/SEGURIDAD.md).
+# Recursos creados por la médica el 19 de octubre de 2026.
 [[d1_databases]]
 binding = "DB"
 database_name = "dranallim"
@@ -16,10 +15,15 @@ migrations_dir = "db/migrations"
 binding = "BUCKET"
 bucket_name = "recetas"
 
+[vars]
+# Origen público del portal. Debe coincidir con el dominio desplegado: la
+# aplicación sólo acepta escrituras con este origen.
+PORTAL_ORIGIN = "https://recetas-medicas.dranallim.workers.dev"
+
 [assets]
 directory = "./dist"
 not_found_handling = "single-page-application"
-# La API siempre llega al Worker y responde 503, incluso al navegar directamente.
+# La API siempre llega al Worker, incluso al navegar directamente.
 run_worker_first = ["/api", "/api/*"]
 
 [dev]

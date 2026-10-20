@@ -1,6 +1,8 @@
 # Especificaciones de desarrollo
 
-Versión: 0.3 — 18 de octubre de 2026. Incluye búsqueda de coberturas e indicaciones
+Versión: 0.4 — 20 de octubre de 2026. El código de acceso del paciente se entrega
+por SMS (Twilio) en lugar de WhatsApp; es una decisión reversible y se motiva en
+§4.4. La versión 0.3 incluía búsqueda de coberturas e indicaciones
 generales/específicas con descarga opcional y reemplazo versionado.
 
 Este documento consolida la conversación de definición. **Acordado** representa
@@ -66,7 +68,7 @@ cuando corresponda; no se promete ocultarla frente a un pedido legítimo.
 | Campo | Regla de partida |
 | --- | --- |
 | DNI | Requerido para el alta mínima; evitar duplicados y normalizar el formato |
-| WhatsApp | Requerido para el alta mínima; normalizar con código de país y verificar asociación |
+| WhatsApp | Requerido para el alta mínima; normalizar con código de país y verificar asociación. Es el número de contacto: hoy recibe el código de acceso por SMS |
 | Nombre y apellido | Requeridos para completar la ficha; puede completarlos la médica después del alta mínima |
 | Obra social | Desplegable con búsqueda por texto, catálogo solicitado, Particular y Otra con nombre libre |
 | Número de afiliado | Registrar cuando corresponda; texto para preservar letras y ceros iniciales |
@@ -196,8 +198,8 @@ el reemplazo versionado de indicaciones ya forma parte del alcance.
 
 1. El paciente ingresa su DNI en el portal y solicita el código.
 2. El servidor responde de forma genérica sin confirmar si el DNI existe.
-3. Si corresponde, genera un código y solicita su envío mediante la API oficial
-   de WhatsApp al contacto verificado.
+3. Si corresponde, genera un código y solicita su envío por SMS al contacto
+   verificado.
 4. El paciente ingresa el código y el servidor lo valida y consume.
 5. Se crea una sesión para ese paciente y se muestran sus publicaciones.
 6. Al terminar los 20 minutos, debe autenticarse nuevamente.
@@ -205,6 +207,15 @@ el reemplazo versionado de indicaciones ya forma parte del alcance.
 No hay bandeja de aprobación, intervención humana ni botón de envío manual
 necesario para que el paciente acceda. Esta decisión **reemplaza** el piloto
 manual explorado al principio de la conversación.
+
+**Canal del código (actualización del 20/10/2026).** El envío se hace por SMS
+con Twilio y **reemplaza** la entrega por WhatsApp que figuraba antes en este
+punto. Motivo: los requisitos de Meta (verificación de empresa y habilitación de
+plantillas de autenticación, que exigen un volumen de conversaciones que un
+consultorio de una sola médica no genera). Es una decisión **reversible**: la
+aplicación sólo conoce el puerto `DeliverCode`, así que retomar WhatsApp es
+cambiar el adaptador. El código sigue siendo de un solo uso y con vencimiento, y
+el mensaje no lleva datos clínicos.
 
 ### 4.5 Importación de Word
 
@@ -318,7 +329,8 @@ contenido escrito y sin reemplazar los controles del servidor.
 - Una médica, pacientes adultos y ficha definida en esta línea base.
 - Documentos previos, consultas nuevas y trazabilidad de correcciones.
 - Indicaciones y PDF originales de Digidoc publicados al paciente.
-- Acceso autónomo mediante WhatsApp oficial, sesiones y permisos.
+- Acceso autónomo mediante código de un solo uso por SMS al contacto verificado,
+  sesiones y permisos.
 - Auditoría, respaldos y recuperación como requisitos de operación.
 - Estadísticas mensuales profesionales según las definiciones de la sección 4.6.
 
@@ -340,14 +352,21 @@ contenido escrito y sin reemplazar los controles del servidor.
 - Simulación de códigos claramente identificada y aislada de producción.
 - Revisión con la médica antes de consolidar los formularios.
 
-### Etapa B — Viabilidad de WhatsApp
+### Etapa B — Entrega del código al paciente
 
-- Envío de prueba con recursos oficiales de Meta a destinatarios habilitados.
-- Documentar restricciones de prueba y requisitos para plantillas de autenticación.
-- No afirmar que recibir un mensaje de ejemplo demuestra habilitación de OTP
-  para todos los pacientes ni la disponibilidad 24 horas en producción.
-- No modificar el número habitual sin revisar coexistencia, elegibilidad y
-  obtener autorización del usuario.
+- Envío de prueba con el proveedor de SMS a un número de prueba propio.
+- Documentar el límite de la cuenta de prueba de Twilio (sólo números
+  verificados) y el precio por SMS a Argentina antes de abrir el acceso.
+- No afirmar que recibir un SMS de ejemplo demuestra la disponibilidad 24 horas
+  en producción.
+- No modificar el WhatsApp habitual del consultorio ni introducir automatización
+  no oficial (ver Etapa B de WhatsApp si se retoma).
+- **Postergado:** viabilidad de WhatsApp (la entrega por Cloud API oficial con
+  plantillas de autenticación) queda como etapa futura, no descartada del
+  alcance. Si se retoma: envío de prueba con recursos oficiales de Meta a
+  destinatarios habilitados, documentar restricciones de prueba y requisitos para
+  plantillas de autenticación, sin afirmar que un mensaje de ejemplo demuestra
+  habilitación de OTP para todos los pacientes.
 
 ### Etapa C — Núcleo funcional y seguridad
 

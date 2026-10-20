@@ -1,6 +1,7 @@
 import { ArrowRight, ShieldCheck, Stethoscope, UserRound } from 'lucide-react';
 import { createBrowserRouter, createRoutesFromElements, Link, Navigate, Route, RouterProvider } from 'react-router-dom';
-import { DoctorLogin, DoctorShell } from './DoctorShell';
+import { DoctorShell } from './DoctorShell';
+import { DemoDoctorLogin, DemoPatientHint, DemoPatientInbox } from './DemoBits';
 import { PatientDetailPage, PatientForm, PatientsPage } from './Patients';
 import { ConsultationPage } from './Consultation';
 import { GeneralIndicationPage, PublicationPage } from './Publication';
@@ -28,8 +29,8 @@ function Landing() {
 const router = createBrowserRouter(createRoutesFromElements(
     <>
       <Route path="/" element={<Landing />} />
-      <Route path="/profesional/ingreso" element={<DoctorLogin />} />
-      <Route path="/profesional" element={<DoctorShell />}>
+      <Route path="/profesional/ingreso" element={<DemoDoctorLogin />} />
+      <Route path="/profesional" element={<DoctorShell demo />}>
         <Route index element={<PatientsPage />} />
         <Route path="estadisticas" element={<StatisticsPage />} />
         <Route path="indicacion-general" element={<GeneralIndicationPage />} />
@@ -40,7 +41,7 @@ const router = createBrowserRouter(createRoutesFromElements(
         <Route path="pacientes/:id/consultas/:consultationId" element={<ConsultationPage />} />
         <Route path="pacientes/:id/entrega" element={<PublicationPage />} />
       </Route>
-      <Route path="/pacientes/ingreso" element={<PatientLogin />} />
+      <Route path="/pacientes/ingreso" element={<PatientLogin demoInbox={<DemoPatientInbox />} demoHint={<DemoPatientHint />} />} />
       <Route path="/pacientes" element={<PatientPortal />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </>,

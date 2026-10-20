@@ -469,7 +469,15 @@ export function createApp(options: AppOptions) {
       id, patientId: patient.id, verifier: Array.from(signature, b => b.toString(16).padStart(2, '0')).join(''),
       createdAt: generatedAt, expiresAt, attempts: 0, consumed: false,
     });
-    await options.deliverCode(patient, code, expiresAt);
+    try {
+      await options.deliverCode(patient, code, expiresAt);
+    } catch {
+      // El desafío ya quedó guardado y la respuesta pública es genérica. El
+      // fallo se registra en la auditoría para poder investigarlo: el código no
+      // llegó, así que el paciente volverá a pedirlo cuando expire la espera.
+      await audit('system', 'challenge.delivery-failed', id);
+      return c.json(genericRequest);
+    }
     await audit('system', 'challenge.created', id);
     return c.json(genericRequest);
   });

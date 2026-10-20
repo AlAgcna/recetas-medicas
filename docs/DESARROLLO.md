@@ -10,9 +10,11 @@ API local Hono. **No es un sistema habilitado para atención clínica.**
 - Reiniciar el servidor demo restaura los ejemplos y elimina todos los cambios.
 - No se usa `localStorage` para sesiones o registros clínicos.
 - Existen D1 (`dranallim`) y el bucket privado R2 (`recetas`), creados por la
-  médica, y `wrangler.toml` ya declara sus bindings. La aplicación desplegada
-  sigue cerrada y todavía no los usa: no hay migración ni datos en la base
-  remota. No hay cuenta Meta ni WhatsApp habilitado.
+  médica, y `wrangler.toml` ya declara sus bindings. La entrada de producción ya
+  arma la aplicación real sobre esos recursos; falta que el usuario migre la D1
+  remota y cargue los secretos (ver [Despliegue](DESPLIEGUE.md)). No hay cuenta
+  Meta ni WhatsApp habilitado. El código del paciente se entrega por SMS con
+  Twilio; la cuenta de prueba sólo llega a números verificados por el titular.
 - Para probar la aplicación real sobre D1 y R2 hay una entrada local aparte
   (ver «Persistencia local con D1 y R2»), que usa emuladores y el buzón simulado.
 - No hay contraseñas: el ingreso de la médica se pide con un enlace de un solo
@@ -72,7 +74,7 @@ npx wrangler dev --config wrangler.local.toml --port 8791
   sólo acepta escrituras con su propio origen.
 - Conserva el ingreso profesional directo (`POST /api/demo/doctor-login`) y el
   buzón simulado (`POST /api/demo/inbox`) para recorrer el flujo completo sin
-  WhatsApp. Ninguna de esas rutas se despliega.
+  proveedor de SMS. Ninguna de esas rutas se despliega.
 - El ingreso de la médica por correo también funciona sin proveedor: `GET
   /api/demo/mailbox` devuelve el último mensaje con el enlace, que sirve para
   probar `POST /api/doctor/request-link` y `POST /api/doctor/session`. En ese
@@ -149,7 +151,7 @@ todos» y «Específica · Para vos». Cada una ofrece una descarga **opcional**
 texto UTF-8, con el mismo título y contenido que se lee en pantalla. Las recetas
 siguen siendo PDF sintéticos descargables. La descarga verifica sesión y
 visibilidad; un enlace de una indicación reemplazada devuelve 404. No hay envío
-por WhatsApp ni recetas emitidas por el sistema.
+automático por SMS ni recetas emitidas por el sistema.
 
 ### Estadísticas
 
@@ -279,9 +281,10 @@ El archivo `wrangler.toml` de la raíz fija la entrada y los estáticos; Wrangle
 queda fijado en `package.json` y `package-lock.json`.
 
 En el proyecto `recetas-medicas`, usar la raíz del repositorio, comando de build
-`npm run build` y comando de despliegue `npx wrangler deploy`. Esto publica
-únicamente la pantalla de espera y la API cerrada, no habilita el portal clínico.
-La publicación queda a cargo del usuario.
+`npm run build` y comando de despliegue `npx wrangler deploy`. Esto publica la
+aplicación real: el ingreso de la médica por enlace de correo y el del paciente
+por código SMS. La publicación, la carga de secretos y las migraciones remotas
+quedan a cargo del usuario; ver [Despliegue](DESPLIEGUE.md).
 
 Para comprobar el empaquetado sin publicar ni crear recursos:
 
@@ -290,11 +293,9 @@ npm run build
 npx wrangler deploy --dry-run
 ```
 
-No eliminar estos bloqueos para publicar la demo. La siguiente etapa debe montar
-en la entrada productiva el ingreso de la médica y los adaptadores de
-persistencia (el esquema ya está escrito), permisos y archivos privados sobre
-los servicios acordados, y después validar la integración oficial de WhatsApp.
-Mantener los controles de `SEGURIDAD.md` como puertas de producción.
+Mantener los controles de `SEGURIDAD.md` como puertas de producción. Antes de
+incorporar historias reales o habilitar pacientes falta, entre otros pendientes,
+la entrega real de SMS con una cuenta de Twilio con upgrade.
 
 ## Organización actual
 
@@ -306,7 +307,7 @@ src/shared/           contratos Zod y reglas temporales
 src/server/d1/        adaptador de D1 y R2
 src/server/demo/      almacén y servidor ficticios, más la entrada local con D1/R2
 src/server/email/     adaptador de correo (Resend) y su puerto
-src/server/index.ts   entrada de producción cerrada
+src/server/index.ts   entrada de producción sobre D1/R2, correo y SMS
 src/web/              pantallas y estilos del prototipo
 tests/                pruebas de API, recorridos de navegador y de persistencia
 wrangler.toml         entrada desplegada (cerrada) y bindings D1/R2

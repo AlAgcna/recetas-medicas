@@ -3,7 +3,6 @@ import { createApp } from '../src/server/app';
 import { createDemoApp } from '../src/server/demo/app';
 import { createMemoryStorage } from '../src/server/demo/storage';
 import { createStore } from '../src/server/demo/store';
-import productionApp from '../src/server/index';
 import { consultationSchema, patientSchema, policy } from '../src/shared/contracts';
 import { examplePdf } from '../src/server/demo/pdf';
 
@@ -524,12 +523,6 @@ describe('validación, CSRF y cierre de producción', () => {
     expect(response.status).toBe(413);
   });
 
-  it('la entrada de producción no habilita API ni herramientas simuladas', async () => {
-    for (const path of ['/api/demo/doctor-login', '/api/demo/inbox', '/api/doctor/patients', '/api/doctor/statistics', '/api/doctor/general-indications', '/api/patient/request-code']) {
-      expect((await productionApp.request(`http://localhost${path}`, { method: 'POST' })).status).toBe(503);
-    }
-  });
-
   it('el servidor simulado rechaza iniciarse con NODE_ENV=production', () => {
     vi.stubEnv('NODE_ENV', 'production');
     try { expect(() => createDemoApp()).toThrow('Simulación no permitida en producción.'); }
@@ -568,5 +561,46 @@ describe('la aplicación se arma por pedido con un secreto estable', () => {
     await issued.request(issued.secret, '/api/patient/request-code', { dni: '00000001' });
     const foreign = perRequest('otro-secreto');
     expect((await foreign.request(foreign.secret, '/api/patient/verify-code', { dni: '00000001', code: issued.code() })).status).toBe(401);
+  });
+});
+
+// El proveedor de mensajería puede rechazar el envío. La respuesta pública no
+// debe cambiar (no revela si el DNI existe) y el intento fallido tiene que
+// quedar registrado para poder investigarlo.
+describe('entrega del código por SMS', () => {
+  function harness(deliverCode: (code: string) => void | Promise<void>) {
+    const now = () => Date.parse('2026-10-19T12:00:00Z');
+    const store = createStore(now());
+    const storage = createMemoryStorage(store);
+    const { app } = createApp({
+      storage, now, origin: 'http://localhost', challengeSecret: 'secreto-estable-de-prueba',
+      health: { mode: 'test', persistent: false, whatsapp: false },
+      deliverCode(_patient, code) { return deliverCode(code); },
+    });
+    const request = (path: string, body: unknown) => app.request(`http://localhost${path}`, {
+      method: 'POST', headers: { Origin: 'http://localhost', 'X-Portal-Request': '1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { request, store };
+  }
+
+  it('un proveedor que falla deja el mismo mensaje genérico y un evento de auditoría', async () => {
+    const h = harness(() => { throw new Error('Twilio rechazó el envío (401).'); });
+    const response = await h.request('/api/patient/request-code', { dni: '00000001' });
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain('00000001');
+    expect(text).not.toContain('Twilio');
+    expect(h.store.audit.filter(event => event.action === 'challenge.delivery-failed')).toHaveLength(1);
+    expect(h.store.audit.filter(event => event.action === 'challenge.created')).toHaveLength(0);
+  });
+
+  it('con un proveedor que responde, el desafío se registra como creado', async () => {
+    let delivered = '';
+    const h = harness(code => { delivered = code; });
+    const response = await h.request('/api/patient/request-code', { dni: '00000001' });
+    expect(response.status).toBe(200);
+    expect(delivered).toMatch(/^\d{6}$/);
+    expect(h.store.audit.filter(event => event.action === 'challenge.created')).toHaveLength(1);
   });
 });

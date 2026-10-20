@@ -33,9 +33,9 @@ Navegador de la médica                 Navegador del paciente
           |
           +-- R2 privado: Word, PDF y otros adjuntos
           |
-          +-- WhatsApp Cloud API: códigos al contacto verificado
+          +-- Twilio SMS: códigos al contacto verificado
                          |
-                    WhatsApp del paciente
+                    SMS del paciente
 
           +-- Resend: enlace de acceso a la casilla de la médica
                          |
@@ -63,8 +63,8 @@ públicos: su descarga pasa por autorización.
 | Acceso a datos | SQL parametrizado detrás de `src/server/storage/port.ts` | Migraciones SQL a mano; el ORM queda por decidir (`PERSISTENCIA.md` §7). D1 no expone transacciones interactivas: usar `batch()` y sentencias condicionales |
 | Validación | Zod, propuesto | Validación obligatoria en el servidor |
 | Archivos | Cloudflare R2 privado | Sin acceso público permanente |
-| Autenticación | Enlace de un solo uso por correo para la médica; OTP por WhatsApp para el paciente | Sesiones en servidor. El único factor profesional, con la casilla de correo como credencial principal, está decidido y con riesgo explícito en `SEGURIDAD.md` §2 |
-| Mensajería | WhatsApp Business Platform / Cloud API | API oficial; plantillas y habilitación según Meta |
+| Autenticación | Enlace de un solo uso por correo para la médica; código de un solo uso por SMS para el paciente | Sesiones en servidor. El único factor profesional, con la casilla de correo como credencial principal, está decidido y con riesgo explícito en `SEGURIDAD.md` §2 |
+| Mensajería | Twilio SMS (`src/server/sms/`) | Decisión vigente: se posterga WhatsApp/Meta por sus requisitos de habilitación. Canal reversible: la aplicación sólo conoce el puerto `DeliverCode` |
 | Correo | Resend (`src/server/email/`) | Sólo texto y una única casilla; cuenta sin dominio propio limita el remitente de pruebas al correo dueño de la cuenta |
 | Pruebas | Vitest + Playwright, propuestos | Reglas, integración y recorridos de navegador |
 | Versionado | GitHub privado, previsto | Gestión manual de add/commit/push por el usuario |
@@ -210,11 +210,42 @@ completas desde endpoints públicos.
 
 ## 7. Integraciones
 
-### WhatsApp
+### Mensajería del código al paciente
+
+- Decisión vigente: el código de un solo uso se entrega **por SMS con Twilio**.
+  WhatsApp/Meta queda postergado por sus requisitos de verificación de empresa y
+  por la habilitación de plantillas de autenticación, que exige volumen de
+  conversaciones que un consultorio de una sola médica no genera. Es una decisión
+  reversible: la aplicación sólo conoce el puerto `DeliverCode`
+  (`src/server/app.ts`) y el adaptador es `src/server/sms/twilio.ts`.
+- La aplicación no conoce al proveedor: `DeliverCode` recibe el paciente y el
+  código. La demostración y el desarrollo local usan el buzón en memoria; no hay
+  proveedor real en el prototipo.
+- Credenciales (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`)
+  como secretos del Worker: las carga el usuario, nunca van al repositorio ni al
+  bundle. Tampoco se registran en auditoría ni en logs, y el cuerpo del error del
+  proveedor no se propaga.
+- El mensaje lleva sólo el código, sin datos clínicos: un SMS puede leerse desde
+  la pantalla de bloqueo de un teléfono perdido.
+- Si el proveedor falla, la respuesta pública sigue siendo genérica y el evento
+  queda como `challenge.delivery-failed` en la auditoría. El paciente no recibe
+  el código, así que volverá a pedirlo cuando expire la espera.
+- Límites vigentes: un pedido cada 5 minutos por paciente, 10 minutos de
+  vigencia del código y máximo 5 intentos, en `policy` de
+  `src/shared/contracts.ts`, aplicados en el servidor.
+- Cuenta de prueba de Twilio: sólo entrega a números verificados por el titular
+  y antepone un aviso de cuenta de prueba. **No sirve para pacientes reales**
+  hasta hacer el upgrade y verificar el precio por SMS a Argentina; comprobar la
+  entrega real a un móvil argentino antes de abrir el acceso.
+- Comprobado que Baileys y demás pasarelas no oficiales de WhatsApp Web siguen
+  descartadas: violan los términos de WhatsApp y arriesgan el número habitual
+  del consultorio (§7.1).
+
+### 7.1 WhatsApp (postergado, no descartado del alcance)
 
 - La aplicación Business del celular no es una API de envío programático.
-- Integrar mediante Cloud API oficial y plantillas de autenticación, según
-  requisitos vigentes de Meta.
+- Si se retoma, integrar sólo mediante Cloud API oficial y plantillas de
+  autenticación, según requisitos vigentes de Meta.
 - Encapsular la mensajería para sustituir el adaptador por uno de pruebas
   únicamente fuera de producción.
 - Configurar cuenta de desarrollador y entorno oficial con destinatarios
@@ -321,6 +352,9 @@ completas desde endpoints públicos.
 - [D1: límites](https://developers.cloudflare.com/d1/platform/limits/)
 - [D1: precios](https://developers.cloudflare.com/d1/platform/pricing/)
 - [R2: precios](https://developers.cloudflare.com/r2/pricing/)
+- [Twilio: API de mensajes](https://www.twilio.com/docs/messaging/api/message-resource)
+- [Twilio: precios de SMS](https://www.twilio.com/en-us/sms/pricing)
+- [Twilio: cuenta de prueba](https://help.twilio.com/articles/223136027-About-Twilio-Trial-Accounts)
 - [Cloud API: inicio](https://developers.facebook.com/docs/whatsapp/cloud-api/get-started)
 - [WhatsApp: precios](https://business.whatsapp.com/products/platform-pricing)
 - [Coexistencia Business App / API](https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-business-app-users)

@@ -76,7 +76,7 @@
         <h2>2. Qué datos se tratan</h2>
         <ul>
           <li><strong>Datos de identificación:</strong> DNI, nombre y apellido.</li>
-          <li><strong>Datos de contacto:</strong> número de WhatsApp.</li>
+          <li><strong>Datos de contacto:</strong> número de teléfono (WhatsApp) de la ficha.</li>
           <li><strong>Cobertura:</strong> obra social o prepaga y número de afiliado o afiliada.</li>
           <li>
             <strong>Datos clínicos:</strong> consultas (fecha, motivo, examen y diagnóstico) y signos vitales (presión
@@ -96,7 +96,7 @@
         <h2>3. Para qué se usan</h2>
         <ul>
           <li>Permitir que cada paciente consulte las indicaciones y recetas que la médica publicó para él.</li>
-          <li>Verificar el acceso al portal con un código que se envía al número de WhatsApp registrado en la ficha.</li>
+          <li>Verificar el acceso al portal con un código que se envía por SMS al número de teléfono registrado en la ficha.</li>
           <li>Mantener la historia de atención y la trazabilidad de lo publicado, reemplazado y consultado.</li>
           <li>Elaborar estadísticas agregadas de la atención, sin identificar a pacientes.</li>
         </ul>
@@ -108,8 +108,8 @@
         <h2>4. Cómo se accede</h2>
         <p>
           El paciente entra al portal e ingresa su DNI. El DNI por sí solo no da acceso: el portal envía un código de un
-          solo uso, con vencimiento, al número de WhatsApp que figura en la ficha, y hay que ingresarlo para entrar. La
-          sesión del paciente vence por inactividad.
+          solo uso, con vencimiento, por SMS al número de teléfono que figura en la ficha, y hay que ingresarlo para
+          entrar. La sesión del paciente vence por inactividad.
         </p>
 
         <h2>5. Con quién se comparten</h2>
@@ -119,7 +119,7 @@
         </p>
         <ul>
           <li><strong>Cloudflare:</strong> alojamiento del portal, base de datos y almacenamiento privado de archivos.</li>
-          <li><strong>WhatsApp (Meta):</strong> entrega del código de acceso al número registrado.</li>
+          <li><strong>Twilio:</strong> envío del SMS con el código de acceso al número registrado.</li>
           <li><strong>Proveedor de correo:</strong> envío del enlace de acceso de la médica al portal profesional.</li>
         </ul>
         <p>

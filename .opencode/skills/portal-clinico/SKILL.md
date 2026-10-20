@@ -21,6 +21,7 @@ Las rutas siguientes son relativas al directorio de esta skill:
 - `../../../docs/SEGURIDAD.md`: controles, pruebas y condiciones de producción.
 - `../../../docs/DESARROLLO.md`: arranque, pruebas y límites del prototipo actual.
 - `../../../docs/PERSISTENCIA.md`: esquema D1, R2, atomicidad y lo que falta.
+- `../../../docs/DESPLIEGUE.md`: alta en Cloudflare, secretos y comprobación.
 
 Si aparece una instrucción nueva del usuario que modifica el producto,
 identificar qué acuerdo reemplaza y actualizar la documentación afectada sin
@@ -116,7 +117,7 @@ El diseño final reemplaza la propuesta inicial de envío manual:
 
 1. El paciente ingresa DNI.
 2. El servidor busca el contacto previamente verificado y responde genéricamente.
-3. Envía un OTP automáticamente mediante la API oficial al WhatsApp asociado.
+3. Envía un OTP automáticamente por SMS al teléfono verificado de la ficha.
 4. El paciente valida el código y obtiene su sesión sin intervención de la médica.
 
 - Una solicitud procesable cada **5 minutos por paciente**, también entre
@@ -206,17 +207,27 @@ El diseño final reemplaza la propuesta inicial de envío manual:
   siguen pendientes.
 - Validar las pantallas con la médica antes de consolidar experiencia y formularios.
 - Códigos simulados solo en pruebas; producción debe rechazar esa configuración.
-- Validar Cloud API con recursos oficiales de Meta y destinatarios habilitados.
-  Una prueba de mensaje no prueba habilitación de plantillas OTP para pacientes reales.
-- Revalidar tarifas de autenticación, presupuesto y requisitos de número/plantilla.
-- Las URLs que pide Meta son páginas HTML sin JavaScript en `public/`:
+- Canal del código: **SMS con Twilio** (`src/server/sms/twilio.ts`), decidido el
+  20/10/2026 en reemplazo de WhatsApp/Meta, que queda postergado por sus
+  requisitos de habilitación (verificación de empresa y plantillas de
+  autenticación con volumen mínimo). Es reversible: la aplicación sólo conoce el
+  puerto `DeliverCode`. La cuenta de prueba de Twilio sólo entrega a números
+  verificados por el titular: no sirve para pacientes reales hasta el upgrade.
+  El mensaje lleva sólo el código, sin datos clínicos. Un fallo del proveedor
+  queda como `challenge.delivery-failed` en la auditoría y la respuesta pública
+  no cambia.
+- Si se retoma WhatsApp: validar Cloud API con recursos oficiales de Meta y
+  destinatarios habilitados. Una prueba de mensaje no prueba habilitación de
+  plantillas OTP para pacientes reales. Revalidar tarifas de autenticación,
+  presupuesto y requisitos de número/plantilla. No alterar el WhatsApp habitual
+  sin comprobar coexistencia y pedir permiso.
+- Las URLs públicas del portal son páginas HTML sin JavaScript en `public/`:
   `/privacidad` (política de privacidad), `/condiciones` (condiciones del
   servicio) y `/eliminacion-de-datos` (instrucciones de eliminación de datos), con
   responsable sin nombre propio y contacto `dranallim@gmail.com`. Se publican con
   el push y el deploy que hace el usuario. La eliminación que anuncian es hoy un
   procedimiento manual del consultorio: la herramienta de borrado todavía no
   existe (ver `SEGURIDAD.md` §10).
-- No alterar el WhatsApp habitual sin comprobar coexistencia y pedir permiso.
 - Importar Word conservando originales, fecha conocida, procedencia y paciente
   revisado. No inventar fechas ni habilitar teléfonos antiguos sin verificarlos.
 - Propuesta de lectura: PDF adicional, sin asumir conversión automática.

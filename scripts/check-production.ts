@@ -7,7 +7,9 @@ const forbidden = ['/api/demo/', 'Antecedentes de ejemplo.docx', 'Entrar a la de
 for (const marker of forbidden) {
   if (scripts.some(script => script.includes(marker))) throw new Error('El build contiene módulos del prototipo. No publicar.');
 }
-if (!scripts.some(script => script.includes('Servicio todavía no habilitado'))) throw new Error('Falta la pantalla de bloqueo de producción.');
+// El bundle de producción debe traer la interfaz real (con la pantalla del
+// enlace de acceso de la médica), no la pantalla de bloqueo anterior.
+if (!scripts.some(script => script.includes('Abrir mi consultorio'))) throw new Error('Falta la pantalla del enlace de acceso de la médica.');
 
 // Páginas públicas que exige la revisión de la app de Meta: HTML plano, sin
 // JavaScript, con el contacto del consultorio y enlazadas entre sí.
@@ -21,4 +23,4 @@ for (const page of publicPages) {
   }
 }
 
-console.info('Build verificado: sin endpoints ni pantallas de simulación; producción permanece bloqueada.');
+console.info('Build verificado: sin módulos ni pantallas de simulación; las páginas públicas están presentes.');
