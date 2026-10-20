@@ -18,7 +18,7 @@ bucket_name = "recetas"
 [vars]
 # Origen público del portal. Debe coincidir con el dominio desplegado: la
 # aplicación sólo acepta escrituras con este origen.
-PORTAL_ORIGIN = "https://recetas-medicas.dranallim.workers.dev"
+PORTAL_ORIGIN = "https://recetas-medicas.alicndeveloper.workers.dev"
 
 [assets]
 directory = "./dist"
