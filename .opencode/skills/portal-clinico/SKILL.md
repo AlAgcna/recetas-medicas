@@ -151,8 +151,12 @@ El diseño final reemplaza la propuesta inicial de envío manual:
 - Una aplicación, preferentemente web y API del mismo origen; no microservicios.
 - Sesiones opacas y revocables del lado del servidor. Cookies `HttpOnly`,
   `Secure`, `SameSite` y protección CSRF adecuada. No JWT por defecto.
-- Ingreso de la médica por **enlace de un solo uso al correo** (decisión del
-  usuario, 19 de octubre de 2026, detalle y riesgos en `SEGURIDAD.md` §2): sin
+- Ingreso de la médica por **código de seis dígitos por correo** (decisión del
+  usuario, 23 de octubre de 2026, reemplaza el magic link del 19/10; detalle y
+  riesgos en `SEGURIDAD.md` §2): 10 minutos, 5 intentos, un uso y enfriamiento de
+  3 minutos. Se acordaron 4 pedidos por IP/hora, honeypot y restricción a Argentina,
+  pero su implementación actual tiene pendientes documentados: no declararlos
+  validados. Sin
   contraseña y sin segundo factor dentro del portal. La casilla de correo es la
   credencial principal y necesita MFA en el proveedor; conviene revisarlo con la
   médica antes de abrir producción.
@@ -244,6 +248,13 @@ El diseño final reemplaza la propuesta inicial de envío manual:
 - Probar con la médica: buscar/crear paciente, completar consulta y publicar receta.
 
 ## Procedimiento de trabajo
+
+Incidente del login del 23/10/2026: `api()` serializa objetos una sola vez;
+no pasarle `JSON.stringify(...)`. La D1 remota tiene un esquema manual distinto
+al canónico (incluido `access_sessions` sin `sessions`); la reparación puntual
+está en `db/repairs/sesiones_faltantes.sql`. No aplicarla por iniciativa propia
+ni asumir que concilia el resto de tablas. Ver `docs/DESPLIEGUE.md` §2. Nunca
+borrar desafíos o límites productivos como paso de diagnóstico.
 
 1. Leer documentos y distinguir lo acordado de lo propuesto o pendiente.
 2. Para código existente, comenzar por grafo si está disponible y después leer

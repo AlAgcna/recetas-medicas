@@ -35,8 +35,9 @@ Los recursos ya existen (creados por la médica): base D1 `dranallim` y bucket R
 
 ## 2. Aplicar las migraciones a la D1 remota
 
-Hoy las migraciones se aplicaron sólo en local. La D1 remota está vacía: sin este
-paso, la primera consulta del portal falla porque las tablas no existen.
+Para una base vacía, aplicar las migraciones del repositorio. Si se crearon tablas
+manualmente, **no asumir que son equivalentes** ni ejecutar este paso a ciegas:
+Wrangler no registra automáticamente esas creaciones ni corrige sus columnas.
 
 ```bash
 npx wrangler d1 migrations apply dranallim --remote
@@ -44,7 +45,39 @@ npx wrangler d1 migrations apply dranallim --remote
 
 Es aditivo y reversible sólo por edición manual del esquema; no borra datos. Al
 confirmar, revisar que liste `0001_persistencia_inicial.sql` y
-`0002_acceso_profesional.sql`.
+`0002_acceso_profesional.sql` y `0003_acceso_medica_codigo.sql`.
+
+### Incidente de ingreso, 23/10/2026
+
+Se confirmó mediante consultas de metadatos (sin leer datos clínicos) que la base
+remota creada manualmente tiene `access_sessions`, pero no `sessions`, que es
+la tabla usada por `src/server/d1/storage.ts`. También hay diferencias en
+`patients`, `consultations`, `publications` y `access_challenges`, y faltan
+`documents` y `code_request_control`. El SQL entregado anteriormente por chat
+no correspondía a las migraciones del proyecto. No usarlo como referencia.
+
+La reparación **puntual del login** está en
+`db/repairs/sesiones_faltantes.sql`, copiada del esquema canónico. Revisar y
+ejecutar por el usuario:
+
+```bash
+npx wrangler d1 execute dranallim --remote --file=db/repairs/sesiones_faltantes.sql
+```
+
+No borra ni modifica `access_sessions`, desafíos o registros clínicos. No resuelve
+el resto del esquema manual: se necesita conciliación revisada, con respaldo y
+autorización antes de migrar datos o retirar tablas. No ejecutar `DROP TABLE` ni
+marcar migraciones como aplicadas para ocultar discrepancias.
+
+El otro fallo estaba en el formulario: pasaba JSON ya serializado a `api()`,
+que volvía a serializarlo. Eso rechazaba el código antes de leer el desafío.
+Enviar objetos a `api()`, reconstruir los estáticos con `npm run build` y
+desplegar después (a cargo del usuario). Desplegar sólo el Worker sin reconstruir
+`dist` deja el formulario viejo.
+
+Si faltaba `sessions`, un código válido se consumía antes de fallar al crear la
+sesión (500); reusarlo devolvía 401. Después de reparar, pedir **un nuevo código**,
+respetando el cooldown. No borrar desafíos ni límites para diagnosticar.
 
 ## 3. Cargar variables y secretos
 
@@ -111,8 +144,9 @@ origen sea el propio. Si el subdominio real es distinto, corregir
 Con el dominio real:
 
 1. `https://<dominio>/` muestra la portada con los dos accesos.
-2. `/profesional/ingreso` ofrece «Enviar enlace de acceso». Al usarlo, llega el
-   correo con el enlace; abrirlo (`/acceso#<token>`) entra al panel.
+2. `/profesional/ingreso` ofrece «Enviar código de acceso». Leer los seis dígitos
+   en el correo e ingresarlos en la misma pantalla. El código dura 10 minutos,
+   sirve una vez y admite hasta 5 intentos. La sesión se guarda en `sessions`.
 3. `/pacientes/ingreso` pide el DNI y envía el código por SMS al número de la
    ficha, siempre que la ficha tenga el contacto verificado.
 4. Las páginas públicas responden sin JavaScript: `/privacidad`, `/condiciones`,

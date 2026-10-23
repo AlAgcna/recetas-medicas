@@ -258,6 +258,12 @@ prototipo no reconstruye información que no conoce.
 
 ## 5. Reglas de acceso y tiempos
 
+**Actualización profesional del 23/10/2026:** la médica solicita y escribe un
+código numérico de seis dígitos enviado a la única casilla configurada. Reemplaza
+el magic link: 10 minutos de vigencia, 5 intentos, un uso y 3 minutos entre
+envíos. También se acordaron 4 pedidos por IP/hora, honeypot y restricción a
+Argentina; su verificación completa sigue pendiente (`SEGURIDAD.md` §2).
+
 | Control | Línea base |
 | --- | --- |
 | Solicitud de código | Como máximo una cada 5 minutos por paciente, independientemente del navegador |

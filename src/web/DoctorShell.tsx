@@ -17,7 +17,7 @@ export function DoctorLogin() {
   const navigate = useNavigate();
   async function requestCode() {
     setBusy(true); setError('');
-    try { await api('/api/doctor/request-code', { method: 'POST', body: JSON.stringify({ website: '' }) }); setSent(true); setCode(''); }
+    try { await api('/api/doctor/request-code', { method: 'POST', body: { website: '' } }); setSent(true); setCode(''); }
     catch (error) { setError(messageOf(error)); }
     finally { setBusy(false); }
   }
@@ -26,7 +26,7 @@ export function DoctorLogin() {
     if (code.length !== 6) return;
     setVerifying(true); setError('');
     try {
-      await api<SessionInfo>('/api/doctor/verify-code', { method: 'POST', body: JSON.stringify({ code }) });
+      await api<SessionInfo>('/api/doctor/verify-code', { method: 'POST', body: { code } });
       navigate('/profesional');
     } catch (error) { setError(messageOf(error)); }
     finally { setVerifying(false); }

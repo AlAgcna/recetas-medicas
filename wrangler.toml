@@ -19,6 +19,12 @@ bucket_name = "recetas"
 # Origen público del portal. Debe coincidir con el dominio desplegado: la
 # aplicación sólo acepta escrituras con este origen.
 PORTAL_ORIGIN = "https://recetas-medicas.alicndeveloper.workers.dev"
+DOCTOR_EMAIL = "aliagustin98@gmail.com"
+RESEND_FROM = "onboarding@resend.dev"
+
+[env.preview.vars]
+DOCTOR_EMAIL = "aliagustin98@gmail.com"
+RESEND_FROM = "onboarding@resend.dev"
 
 [assets]
 directory = "./dist"

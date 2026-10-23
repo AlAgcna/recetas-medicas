@@ -37,7 +37,7 @@ Navegador de la médica                 Navegador del paciente
                          |
                     SMS del paciente
 
-          +-- Resend: enlace de acceso a la casilla de la médica
+          +-- Resend: código de seis dígitos a la casilla de la médica
                          |
                     Correo de la médica
 
@@ -63,7 +63,7 @@ públicos: su descarga pasa por autorización.
 | Acceso a datos | SQL parametrizado detrás de `src/server/storage/port.ts` | Migraciones SQL a mano; el ORM queda por decidir (`PERSISTENCIA.md` §7). D1 no expone transacciones interactivas: usar `batch()` y sentencias condicionales |
 | Validación | Zod, propuesto | Validación obligatoria en el servidor |
 | Archivos | Cloudflare R2 privado | Sin acceso público permanente |
-| Autenticación | Enlace de un solo uso por correo para la médica; código de un solo uso por SMS para el paciente | Sesiones en servidor. El único factor profesional, con la casilla de correo como credencial principal, está decidido y con riesgo explícito en `SEGURIDAD.md` §2 |
+| Autenticación | Código de seis dígitos por correo para la médica; código de un solo uso por SMS para el paciente | Sesiones en servidor. El único factor profesional, con la casilla de correo como credencial principal, está decidido y con riesgo explícito en `SEGURIDAD.md` §2 |
 | Mensajería | Twilio SMS (`src/server/sms/`) | Decisión vigente: se posterga WhatsApp/Meta por sus requisitos de habilitación. Canal reversible: la aplicación sólo conoce el puerto `DeliverCode` |
 | Correo | Resend (`src/server/email/`) | Sólo texto y una única casilla; cuenta sin dominio propio limita el remitente de pruebas al correo dueño de la cuenta |
 | Pruebas | Vitest + Playwright, propuestos | Reglas, integración y recorridos de navegador |
@@ -268,7 +268,8 @@ completas desde endpoints públicos.
 
 ### Correo
 
-- Resend envía el enlace de ingreso de la médica. `RESEND_API_KEY` y
+- Resend envía el código de ingreso de la médica (reemplaza el magic link por
+  decisión del 23/10/2026). `RESEND_API_KEY` y
   `DOCTOR_EMAIL` son secretos del Worker: cargados por el usuario, nunca en el
   repositorio ni en el bundle.
 - La aplicación sólo pide entregar un mensaje (`src/server/email/port.ts`); el
@@ -278,11 +279,12 @@ completas desde endpoints públicos.
   `onboarding@resend.dev` sólo entrega al correo dueño de la cuenta de Resend.
   Si `DOCTOR_EMAIL` es otra dirección, el envío falla y la médica no recibe nada:
   verificar ese dato antes de abrir el ingreso.
-- El mensaje lleva únicamente el enlace de acceso, en texto plano y sin adjuntos
-  ni datos clínicos; el token va en el fragmento de la URL, que no llega al
-  servidor con el `GET` ni lo consumen los escáneres de enlaces del correo.
-- Los límites (un pedido por minuto, 15 minutos de vigencia, un solo uso) están
-  en `policy` de `src/shared/contracts.ts` y se aplican en el servidor.
+- El mensaje lleva únicamente el código, en texto plano y sin adjuntos ni datos
+  clínicos. El formulario envía un objeto a `api()`, que serializa una sola vez.
+- Enfriamiento global de 3 minutos, vigencia de 10 minutos, 5 intentos y un solo
+  consumo, en `policy` de `src/shared/contracts.ts`. Estado real de las medidas
+  antiabuso y pendientes en `SEGURIDAD.md` §2. La conciliación del esquema remoto
+  creado manualmente se detalla en `DESPLIEGUE.md` §2.
 
 ### Digidoc
 

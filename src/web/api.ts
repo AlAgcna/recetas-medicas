@@ -2,7 +2,8 @@ export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
 
-export async function api<T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
+// Los objetos se serializan acá, una sola vez. No aceptar JSON ya serializado.
+export async function api<T>(path: string, options: { method?: string; body?: Record<string, unknown> | FormData; signal?: AbortSignal } = {}): Promise<T> {
   let response: Response;
   try {
     const multipart = options.body instanceof FormData;

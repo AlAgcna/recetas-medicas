@@ -64,7 +64,8 @@ describe('migración inicial', () => {
       .map(row => String(row.name)).sort();
     expect(tables).toEqual([
       'access_challenges', 'access_link_control', 'access_links', 'audit_events',
-      'code_request_control', 'consultations', 'documents', 'patients', 'publications', 'sessions',
+      'code_request_control', 'consultations', 'doctor_access_challenges', 'doctor_access_control',
+      'doctor_access_ip_limit', 'documents', 'patients', 'publications', 'sessions',
     ]);
     const indexes = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'index'").all()
       .filter(row => String(row.sql).includes('WHERE'))

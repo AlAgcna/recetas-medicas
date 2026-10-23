@@ -27,22 +27,27 @@ legal ni certifican cumplimiento.
 
 ## 2. Autenticación profesional
 
-**Decisión adoptada con el usuario, 19 de octubre de 2026:** ingreso de la médica
-**sólo con enlace de un solo uso por correo** («magic link»), sin contraseña y sin
-segundo factor dentro del portal.
+**Actualización acordada con el usuario, 23 de octubre de 2026:** ingreso de la
+médica con **código numérico de seis dígitos por correo**. Reemplaza el enlace
+de un solo uso elegido el 19/10; sigue sin contraseña ni segundo factor dentro
+del portal.
 
 Reglas que lo sostienen:
 
-- El enlace lo pide la médica; el servidor lo envía a una única casilla
-  configurada como secreto y nunca responde con el token.
-- 15 minutos de vigencia, un solo uso, un pedido de enlace por minuto; emitir
-  uno nuevo invalida el anterior. El consumo es atómico: dos usos simultáneos no
-  abren dos sesiones.
-- En la base queda sólo el hash SHA-256 del token; el token no aparece en
-  respuestas, en la auditoría ni en registros del servidor. El token viaja en el
-  fragmento de la URL (`/acceso#…`), que no llega al servidor con el `GET`.
-- Respuestas idénticas para «correo configurado», «correo no configurado»,
-  «enlace vencido» y «enlace inventado»: no revelan si existe la casilla.
+- El servidor envía el código a la única casilla configurada; el formulario no
+  puede elegir el destino. Nunca responder con el código.
+- 10 minutos de vigencia, hasta 5 intentos y un solo uso. Enfriamiento global de
+  3 minutos; emitir otro invalida el anterior. Consumo e intentos condicionales
+  en D1: dos verificaciones concurrentes no abren dos sesiones.
+- En la base queda sólo el verificador HMAC protegido por `SESSION_SECRET`,
+  nunca los seis dígitos. No colocar códigos en URLs, logs ni auditoría.
+- Código incorrecto, vencido, agotado o usado: misma respuesta 401. Sin correo
+  configurado se responde 503; un fallo de envío responde 502.
+- Protección antiabuso acordada: 4 pedidos por IP por hora, honeypot y acceso
+  desde Argentina. **No dar por validado su estado actual**: el contador por IP
+  reinicia incorrectamente su ventana, el frontend aún manda el honeypot vacío
+  fijo y la comprobación de país no deniega metadatos ausentes. Su reparación y
+  pruebas específicas siguen pendientes; no es una protección productiva completa.
 - Cookie de sesión `HttpOnly`, `Secure`, `SameSite=Strict` y con nombre sin el
   prefijo `demo_` en producción, más los controles de origen de cada pedido.
 - La sesión profesional conserva la política de §4 (2 horas de inactividad; el
@@ -278,10 +283,12 @@ definir expiración, validación estricta y revocación sin incluir datos clíni
 - Enmienda de consulta finalizada: exige motivo, conserva el texto original,
   rechaza una versión ya reemplazada o de otra ficha y no duplica el registro
   profesional ni la estadística.
-- Enlace de ingreso de la médica: vencido, ya usado, reemplazado por uno nuevo,
-  emitido dentro del enfriamiento y con respuesta genérica sin existir casilla.
-- El enlace de la médica no aparece en la respuesta, en la auditoría ni en la
-  base: sólo su hash SHA-256.
+- Código de la médica: vencido, usado, reemplazado, agotado y pedido dentro del
+  enfriamiento; HMAC en base, sin código en respuesta ni auditoría. Verificar
+  formulario real y serialización única de JSON, no sólo llamadas directas a API.
+- Verificar el esquema de sesiones antes de producción: una tabla con otro
+  nombre no equivale a `sessions`. Un fallo al crear la sesión después del
+  consumo no autoriza a reactivar el código ni a borrar los límites.
 - Sesión profesional con cookie `Secure`, `HttpOnly` y sin prefijo de
   demostración en la configuración de producción.
 - Restauración de datos y archivos en un entorno aislado autorizado.

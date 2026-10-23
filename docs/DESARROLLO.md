@@ -17,10 +17,10 @@ API local Hono. **No es un sistema habilitado para atención clínica.**
   Twilio; la cuenta de prueba sólo llega a números verificados por el titular.
 - Para probar la aplicación real sobre D1 y R2 hay una entrada local aparte
   (ver «Persistencia local con D1 y R2»), que usa emuladores y el buzón simulado.
-- No hay contraseñas: el ingreso de la médica se pide con un enlace de un solo
-  uso enviado a su correo. Ese circuito existe en el servidor y en sus pruebas,
-  pero todavía no tiene pantalla ni entrada productiva. No hay MFA, recuperación
-  ni verificación real de contactos.
+- No hay contraseñas: el ingreso real de la médica usa un código de seis dígitos
+  enviado por correo, con pantalla productiva. Reemplaza el magic link desde el
+  23/10/2026. No hay MFA dentro del portal, recuperación ni verificación real de
+  contactos. Los pendientes de antiabuso están en `SEGURIDAD.md` §2.
 - La entrada profesional demo y el buzón simulado son herramientas de prueba,
   no mecanismos de autenticación utilizables en producción.
 - No se adjuntan archivos reales. El Word es una referencia visual; el PDF se
@@ -190,6 +190,14 @@ parámetro de `createApp` (`cookie`): producción pasa nombre sin prefijo y
 `Secure`, y esa condición está probada en `tests/d1-api.test.ts`.
 
 ## Verificaciones
+
+Regresión del login del 23/10/2026: `tests/e2e/doctor-login.spec.ts` monta la
+interfaz productiva en Vite de pruebas y la conecta al servidor Hono real sobre
+SQLite aislado. No envía correos, no lee códigos reales y no toca Cloudflare.
+Comprueba el JSON enviado por el formulario, error de tipeo sin consumo,
+validación correcta, cookie, recarga y cierre de sesión. Las pruebas D1 incluyen
+JSON doble, expiración, concurrencia, intentos agotados y el caso de `sessions`
+faltante con su reparación local (`DESPLIEGUE.md` §2).
 
 ```sh
 npm run typecheck

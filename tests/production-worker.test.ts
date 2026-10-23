@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import productionWorker, { type ProductionEnv } from '../src/server/index';
 import { d1Storage, sqliteD1 } from './helpers/sqlite-d1';
 
@@ -41,9 +41,9 @@ describe('entrada productiva', () => {
     expect(() => productionWorker.fetch(new Request(`${origin}/`), env)).toThrow(/SESSION_SECRET/);
   });
 
-  it('sin proveedores configurados no abre acceso: el enlace de la médica responde 503', async () => {
+  it('sin proveedores configurados no abre acceso: el código de la médica responde 503', async () => {
     const { request } = await worker();
-    expect((await request('/api/doctor/request-link', { method: 'POST' })).status).toBe(503);
+    expect((await request('/api/doctor/request-code', { method: 'POST' })).status).toBe(503);
   });
 
   it('sin SMS configurado el pedido de código responde de forma genérica', async () => {
@@ -71,5 +71,32 @@ describe('entrada productiva', () => {
   it('sin sesión, una ruta profesional responde 401 aunque la API esté montada', async () => {
     const { request } = await worker();
     expect((await request('/api/doctor/patients', { method: 'GET' })).status).toBe(401);
+  });
+
+  it('un código emitido en una invocación abre sesión en otra con el mismo secreto, sin depender de Twilio', async () => {
+    let code = '';
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      const email = JSON.parse(String(init.body)) as { text: string };
+      code = email.text.match(/\b\d{6}\b/)![0];
+      return Response.json({ id: 'correo-ficticio' });
+    }));
+    try {
+      const { request } = await worker({
+        RESEND_API_KEY: 'clave-ficticia', RESEND_FROM: 'portal@ejemplo.test', DOCTOR_EMAIL: 'medica@ejemplo.test',
+      });
+      const requested = await request('/api/doctor/request-code', {
+        method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.1', 'CF-IPCountry': 'AR' },
+        body: JSON.stringify({ website: '' }),
+      });
+      expect(requested.status).toBe(200);
+      expect(code).toMatch(/^\d{6}$/);
+      const opened = await request('/api/doctor/verify-code', { method: 'POST', body: JSON.stringify({ code }) });
+      expect(opened.status).toBe(200);
+      const cookie = opened.headers.get('set-cookie')!.split(';')[0];
+      expect((await request('/api/doctor/session', { headers: { Cookie: cookie } })).status).toBe(200);
+      expect((await request('/api/doctor/verify-code', { method: 'POST', body: JSON.stringify({ code }) })).status).toBe(401);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
