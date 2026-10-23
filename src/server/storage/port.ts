@@ -128,16 +128,19 @@ export interface Storage {
   consumeChallenge(patientId: string, challengeId: string, matches: boolean, maxAttempts: number, at: number): Promise<boolean>;
 
   // ── Ingreso de la médica ───────────────────────────────────────────────────
-  /** Reserva el próximo pedido de enlace. Una sola operación condicional. */
-  reserveAccessLinkRequest(reservedUntil: number, at: number): Promise<boolean>;
-  /** Instala el enlace vigente, invalidando cualquier anterior. */
-  putAccessLink(link: AccessLink): Promise<void>;
+  /** Reserva el próximo pedido de código por correo. Una sola operación condicional. */
+  reserveDoctorCodeRequest(reservedUntil: number, at: number): Promise<boolean>;
+  /** Instala el desafío vigente de la médica, invalidando cualquier anterior. */
+  putDoctorChallenge(challenge: AccessChallenge): Promise<void>;
+  getDoctorChallenge(): Promise<AccessChallenge | undefined>;
   /**
-   * Consume el enlace sólo si sigue vigente y sin usar. Una sola operación
-   * condicional: dos pedidos simultáneos no pueden abrir dos sesiones con el
-   * mismo enlace.
+   * Cierra la verificación del código de la médica: cuenta el intento si sigue
+   * vigente y consume el código sólo si el verificador coincidió. Devuelve si
+   * el acceso queda autorizado. Una sola operación condicional.
    */
-  consumeAccessLink(tokenHash: string, at: number): Promise<boolean>;
+  consumeDoctorChallenge(challengeId: string, matches: boolean, maxAttempts: number, at: number): Promise<boolean>;
+  /** Reserva intento por IP para el ingreso de la médica. Devuelve true si permitido. */
+  reserveDoctorIpRequest(ipHash: string, windowStart: number, windowEnd: number, maxAttempts: number, at: number): Promise<boolean>;
 
   // ── Auditoría ──────────────────────────────────────────────────────────────
   appendAudit(event: AuditEvent): Promise<void>;

@@ -399,32 +399,53 @@ export function createD1Storage(db: SqlDatabase, bucket: FileBucket): Storage {
     },
 
     // ── Ingreso de la médica ───────────────────────────────────────────────────
-    async reserveAccessLinkRequest(reservedUntil, at) {
-      // Una sola sentencia: si el cooldown sigue vigente, la condición del
-      // upsert no se cumple y no se modifica ni se devuelve fila.
-      const row = await db.prepare(`INSERT INTO access_link_control (scope, next_request_at)
+    async reserveDoctorCodeRequest(reservedUntil, at) {
+      const row = await db.prepare(`INSERT INTO doctor_access_control (scope, next_request_at)
         VALUES ('doctor', ?)
         ON CONFLICT(scope) DO UPDATE SET next_request_at = excluded.next_request_at
-        WHERE access_link_control.next_request_at <= ?
+        WHERE doctor_access_control.next_request_at <= ?
         RETURNING next_request_at`).bind(reservedUntil, at).first<Row>();
       return row !== null;
     },
-    async putAccessLink(link) {
-      // Un enlace nuevo invalida el anterior: se cierra el vigente y se inserta
-      // el nuevo en el mismo lote, para no chocar con el índice único parcial.
+    async putDoctorChallenge(challenge) {
       await db.batch([
-        db.prepare(`DELETE FROM access_links WHERE scope = 'doctor' AND consumed_at IS NULL`),
-        db.prepare(`INSERT INTO access_links (token_hash, scope, created_at, expires_at)
-          VALUES (?, 'doctor', ?, ?)`).bind(link.tokenHash, link.createdAt, link.expiresAt),
+        db.prepare('DELETE FROM doctor_access_challenges WHERE consumed_at IS NULL'),
+        db.prepare(`INSERT INTO doctor_access_challenges (id, verifier, created_at, expires_at, attempts, consumed_at)
+          VALUES (?, ?, ?, ?, ?, ?)`).bind(
+          challenge.id, challenge.verifier, challenge.createdAt, challenge.expiresAt,
+          challenge.attempts, challenge.consumed ? challenge.createdAt : null),
       ]);
     },
-    async consumeAccessLink(tokenHash, at) {
-      // Vencido o ya usado: sin cambios. Dos pedidos simultáneos con el mismo
-      // enlace no pueden consumirlo dos veces.
-      const result = await db.prepare(`UPDATE access_links SET consumed_at = ?
-        WHERE token_hash = ? AND scope = 'doctor' AND consumed_at IS NULL AND expires_at > ?`)
-        .bind(at, tokenHash, at).run();
-      return Number(result.meta.changes) === 1;
+    async getDoctorChallenge() {
+      const row = await db.prepare(`SELECT * FROM doctor_access_challenges
+        WHERE consumed_at IS NULL ORDER BY created_at DESC LIMIT 1`).first<Row>();
+      if (!row) return undefined;
+      return {
+        id: text(row.id), patientId: 'doctor', verifier: text(row.verifier),
+        createdAt: number(row.created_at), expiresAt: number(row.expires_at), attempts: number(row.attempts), consumed: false,
+      } satisfies AccessChallenge;
+    },
+    async consumeDoctorChallenge(challengeId, matches, maxAttempts, at) {
+      const result = matches
+        ? await db.prepare(`UPDATE doctor_access_challenges SET attempts = attempts + 1, consumed_at = ?
+            WHERE id = ? AND consumed_at IS NULL AND attempts < ? AND expires_at > ?`)
+          .bind(at, challengeId, maxAttempts, at).run()
+        : await db.prepare(`UPDATE doctor_access_challenges SET attempts = attempts + 1
+            WHERE id = ? AND consumed_at IS NULL AND attempts < ? AND expires_at > ?`)
+          .bind(challengeId, maxAttempts, at).run();
+      return matches && Number(result.meta.changes) === 1;
+    },
+    async reserveDoctorIpRequest(ipHash, windowStart, windowEnd, maxAttempts, at) {
+      const row = await db.prepare(`INSERT INTO doctor_access_ip_limit (ip_hash, count, window_start, last_request_at)
+        VALUES (?, 1, ?, ?)
+        ON CONFLICT(ip_hash) DO UPDATE SET
+          count = CASE WHEN doctor_access_ip_limit.window_start < ? THEN 1 ELSE doctor_access_ip_limit.count + 1 END,
+          window_start = CASE WHEN doctor_access_ip_limit.window_start < ? THEN ? ELSE doctor_access_ip_limit.window_start END,
+          last_request_at = ?
+        WHERE (doctor_access_ip_limit.window_start < ?)
+           OR (doctor_access_ip_limit.count < ?)
+        RETURNING count`).bind(ipHash, windowStart, at, windowStart, windowStart, windowStart, at, windowStart, maxAttempts).first<Row>();
+      return row !== null;
     },
 
     // ── Auditoría ──────────────────────────────────────────────────────────────

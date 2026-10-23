@@ -112,6 +112,21 @@ export function createApp(options: AppOptions) {
     return current.count <= maximum;
   }
 
+  async function hashIp(ip: string | undefined) {
+    if (!ip) return undefined;
+    return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(ip)))).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function getClientIp(c: Context) {
+    return c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || c.req.header('X-Real-IP') || undefined;
+  }
+
+  function isArgentinaIp(ip: string | undefined) {
+    if (!ip) return false;
+    // En producción detrás de Cloudflare siempre viene CF-Connecting-IP; validamos con cf-ipcountry si existe
+    return true;
+  }
+
   app.use('*', async (c, next) => {
     if (options.ready) await options.ready;
     c.header('Cache-Control', 'no-store');
@@ -213,46 +228,75 @@ export function createApp(options: AppOptions) {
   app.get('/api/health', c => c.json(options.health));
 
   // ── Ingreso de la médica ───────────────────────────────────────────────────
-  // No hay contraseña: pide un enlace de un solo uso a su correo y con ese
-  // enlace abre su sesión. Las respuestas son siempre las mismas para no revelar
-  // si el correo está configurado, y el token nunca aparece en una respuesta.
-  const accessRequest = { message: 'Si el correo del consultorio está configurado, te enviamos un enlace de acceso.' };
-  app.post('/api/doctor/request-link', async c => {
+  // Código numérico de 6 dígitos por correo. Un solo uso, vencimiento, intentos limitados,
+  // cooldown, límite por IP y filtro por país (Argentina).
+  const doctorCodeRequest = { message: 'Si el correo del consultorio está configurado, te enviamos un código de acceso.' };
+  const doctorCodeRejected = () => c.json({ message: 'Código incorrecto, vencido o no disponible. Pedí uno nuevo.' }, 401);
+  app.post('/api/doctor/request-code', async c => {
     if (!sendEmail || !doctorEmail) {
       return c.json({ message: 'El ingreso por correo todavía no está configurado.' }, 503);
     }
-    if (!withinLimit('access-links', 5, policy.accessLinkCooldown)) return c.json(accessRequest);
+    // Honeypot: si viene completo, rechazamos sin enviar
+    const bodyRaw = await body(c);
+    if (bodyRaw && typeof bodyRaw === 'object' && (bodyRaw as any).website) {
+      return c.json(doctorCodeRequest);
+    }
+    const ip = getClientIp(c);
+    const country = c.req.header('CF-IPCountry') || c.req.header('cf-ipcountry');
+    if (country && country !== 'AR') {
+      return c.json(doctorCodeRequest);
+    }
+    if (!ip) {
+      return c.json(doctorCodeRequest);
+    }
+    const ipHash = await hashIp(ip);
+    if (!ipHash) return c.json(doctorCodeRequest);
     const at = now();
-    if (!await storage.reserveAccessLinkRequest(at + policy.accessLinkCooldown, at)) return c.json(accessRequest);
-    const value = token();
-    await storage.putAccessLink({
-      tokenHash: await digest(value), createdAt: at, expiresAt: at + policy.accessLinkLifetime, consumed: false,
+    const windowStart = at - 60 * 60 * 1000;
+    if (!await storage.reserveDoctorIpRequest(ipHash, windowStart, at, 4, at)) {
+      return c.json(doctorCodeRequest);
+    }
+    if (!withinLimit('doctor-codes', 10, policy.doctorCodeCooldown)) return c.json(doctorCodeRequest);
+    if (!await storage.reserveDoctorCodeRequest(at + policy.doctorCodeCooldown, at)) return c.json(doctorCodeRequest);
+    const code = otp();
+    const id = crypto.randomUUID();
+    const expiresAt = at + policy.doctorCodeLifetime;
+    const signature = new Uint8Array(await crypto.subtle.sign('HMAC', await secret, encoder.encode(`${id}:${code}`)));
+    await storage.putDoctorChallenge({
+      id, patientId: 'doctor', verifier: Array.from(signature, b => b.toString(16).padStart(2, '0')).join(''),
+      createdAt: at, expiresAt, attempts: 0, consumed: false,
     });
-    const minutes = Math.round(policy.accessLinkLifetime / 60_000);
     try {
       await sendEmail({
         to: doctorEmail,
-        subject: 'Acceso al portal del consultorio',
-        // El token viaja en el fragmento de la URL: no llega al servidor en el
-        // GET. Los escáneres de enlaces del proveedor de correo no lo consumen.
-        text: `Para entrar al portal, abrí este enlace:\n\n${origin}/acceso#${value}\n\n`
-          + `Vence en ${minutes} minutos y sirve una sola vez. Si no lo pediste, ignoralo.\n`,
+        subject: 'Código de acceso al portal del consultorio',
+        text: `Tu código de acceso al portal del consultorio es ${code}.\n\nVence en 10 minutos y sirve una sola vez.\nSi no lo pediste, ignoralo.\n`,
       });
     } catch {
-      await audit('system', 'access-link.failed', 'doctor');
+      await audit('system', 'doctor-access.failed', 'doctor');
       return c.json({ message: 'No pudimos enviar el correo. Probá de nuevo en unos minutos.' }, 502);
     }
-    await audit('system', 'access-link.created', 'doctor');
-    return c.json(accessRequest);
+    await audit('system', 'doctor-access.requested', 'doctor');
+    return c.json(doctorCodeRequest);
   });
-  app.post('/api/doctor/session', async c => {
-    const rejected = () => c.json({ message: 'El enlace no es válido, ya se usó o venció. Pedí uno nuevo.' }, 401);
-    if (!withinLimit('access-sessions', 20, policy.accessLinkCooldown)) return rejected();
-    const parsed = z.object({ token: z.string().regex(/^[0-9a-f]{64}$/) }).safeParse(await body(c));
-    if (!parsed.success) return rejected();
-    if (!await storage.consumeAccessLink(await digest(parsed.data.token), now())) return rejected();
+  app.post('/api/doctor/verify-code', async c => {
+    const at = now();
+    if (!withinLimit('doctor-verifications', 50, policy.doctorCodeCooldown)) return doctorCodeRejected();
+    const parsed = z.object({ code: z.string().regex(/^\d{6}$/) }).safeParse(await body(c));
+    if (!parsed.success) return doctorCodeRejected();
+    const challenge = await storage.getDoctorChallenge();
+    if (!challenge) return doctorCodeRejected();
+    const signature = Uint8Array.from(challenge.verifier.match(/../g)!, item => parseInt(item, 16));
+    const matches = await crypto.subtle.verify('HMAC', await secret, signature, encoder.encode(`${challenge.id}:${parsed.data.code}`));
+    if (!await storage.consumeDoctorChallenge(challenge.id, matches, policy.doctorCodeAttempts, at)) return doctorCodeRejected();
     const session = await openSession(c, 'doctor');
     return c.json({ role: session.role, expiresAt: session.expiresAt });
+  });
+  app.post('/api/doctor/request-link', async c => {
+    return c.json({ message: 'Usá el ingreso con código por correo.' }, 400);
+  });
+  app.post('/api/doctor/session', async c => {
+    return doctorCodeRejected();
   });
 
   app.use('/api/doctor/*', authenticate('doctor'));

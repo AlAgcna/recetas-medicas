@@ -6,27 +6,47 @@ import { api, ApiError, messageOf } from './api';
 import { Alert, Brand, Loading, minutesLeft, useClock } from './ui';
 
 /**
- * Ingreso real de la médica: no hay contraseña, pide un enlace de un solo uso a
- * su correo y el enlace abre la sesión en `/acceso`.
+ * Ingreso real de la médica: código numérico de 6 dígitos al correo del consultorio.
  */
 export function DoctorLogin() {
   const [busy, setBusy] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
-  async function requestLink() {
+  const [code, setCode] = useState('');
+  const navigate = useNavigate();
+  async function requestCode() {
     setBusy(true); setError('');
-    try { await api('/api/doctor/request-link', { method: 'POST' }); setSent(true); }
+    try { await api('/api/doctor/request-code', { method: 'POST', body: JSON.stringify({ website: '' }) }); setSent(true); setCode(''); }
     catch (error) { setError(messageOf(error)); }
     finally { setBusy(false); }
+  }
+  async function verifyCode(event: React.FormEvent) {
+    event.preventDefault();
+    if (code.length !== 6) return;
+    setVerifying(true); setError('');
+    try {
+      await api<SessionInfo>('/api/doctor/verify-code', { method: 'POST', body: JSON.stringify({ code }) });
+      navigate('/profesional');
+    } catch (error) { setError(messageOf(error)); }
+    finally { setVerifying(false); }
   }
   return <div className="public-page"><header className="public-header"><Brand /></header><main className="access-card">
     <span className="entry-icon"><ShieldCheck /></span><span className="eyebrow">ÁREA PROFESIONAL</span>
     <h1>Ingresá a tu consultorio</h1>
-    <p>No hay contraseña: te enviamos un enlace de un solo uso al correo del consultorio. Dura 15 minutos y sirve una vez.</p>
+    <p>Te enviamos un código numérico de 6 dígitos al correo del consultorio. Vence en 10 minutos y sirve una sola vez.</p>
     {error && <Alert>{error}</Alert>}
-    {sent
-      ? <Alert success>Si el correo del consultorio está configurado, te enviamos un enlace. Revisá tu casilla y abrí el enlace para entrar.</Alert>
-      : <button className="button primary full" disabled={busy} onClick={requestLink}>{busy ? 'Enviando…' : 'Enviar enlace de acceso'}</button>}
+    {sent ? <>
+      <Alert success>Si el correo del consultorio está configurado, te enviamos un código. Revisá tu casilla e ingresá el código.</Alert>
+      <form onSubmit={verifyCode} className="form">
+        <label className="field">
+          <span>Código</span>
+          <input type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" value={code} onChange={event => setCode(event.target.value.replace(/[^0-9]/g, '').slice(0, 6))} required />
+        </label>
+        <button className="button primary full" type="submit" disabled={verifying || code.length !== 6}>{verifying ? 'Verificando…' : 'Ingresar'}</button>
+      </form>
+      <button className="button secondary full" type="button" disabled={busy || verifying} onClick={requestCode}>{busy ? 'Enviando…' : 'Pedir otro código'}</button>
+    </> : <button className="button primary full" disabled={busy} onClick={requestCode}>{busy ? 'Enviando…' : 'Enviar código de acceso'}</button>}
     <Link className="text-link" to="/">Volver al inicio</Link>
   </main></div>;
 }
