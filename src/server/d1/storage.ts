@@ -435,7 +435,7 @@ export function createD1Storage(db: SqlDatabase, bucket: FileBucket): Storage {
           .bind(challengeId, maxAttempts, at).run();
       return matches && Number(result.meta.changes) === 1;
     },
-    async reserveDoctorIpRequest(ipHash, windowStart, windowEnd, maxAttempts, at) {
+    async reserveDoctorIpRequest(ipHash, windowStart, _windowEnd, maxAttempts, at) {
       const row = await db.prepare(`INSERT INTO doctor_access_ip_limit (ip_hash, count, window_start, last_request_at)
         VALUES (?, 1, ?, ?)
         ON CONFLICT(ip_hash) DO UPDATE SET

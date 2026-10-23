@@ -154,23 +154,49 @@ export function createMemoryStorage(state: DemoStore): Storage {
     },
 
     // ── Ingreso de la médica ───────────────────────────────────────────────────
-    async reserveAccessLinkRequest(reservedUntil, at) {
+    async reserveDoctorCodeRequest(reservedUntil: number, at: number) {
       if ((state.accessLinkRequests.get('doctor') ?? 0) > at) return false;
       state.accessLinkRequests.set('doctor', reservedUntil);
       return true;
     },
-    async putAccessLink(link) {
-      // Un enlace nuevo invalida el anterior, igual que un código nuevo invalida
-      // el desafío previo.
-      for (const [hash, existing] of state.accessLinks) {
-        if (!existing.consumed) state.accessLinks.delete(hash);
+    async putDoctorChallenge(challenge: any) {
+      for (const [id, existing] of state.challenges) {
+        if (!existing.consumed) state.challenges.set(id, { ...existing, consumed: true });
       }
-      state.accessLinks.set(link.tokenHash, link);
+      state.challenges.set(challenge.id, { ...challenge, patientId: 'doctor' });
     },
-    async consumeAccessLink(tokenHash, at) {
-      const link = state.accessLinks.get(tokenHash);
-      if (!link || link.consumed || link.expiresAt <= at) return false;
-      link.consumed = true;
+    async getDoctorChallenge() {
+      for (const challenge of state.challenges.values()) {
+        if (challenge.patientId === 'doctor' && !challenge.consumed && challenge.expiresAt > Date.now()) return challenge;
+      }
+      return undefined;
+    },
+    async consumeDoctorChallenge(challengeId: string, matches: boolean, maxAttempts: number, at: number) {
+      for (const challenge of state.challenges.values()) {
+        if (challenge.patientId === 'doctor' && challenge.id === challengeId) {
+          if (challenge.consumed || challenge.expiresAt <= at || challenge.attempts >= maxAttempts) return false;
+          challenge.attempts += 1;
+          if (matches) { challenge.consumed = true; return true; }
+          return false;
+        }
+      }
+      return false;
+    },
+    async reserveDoctorIpRequest(ipHash: string, windowStart: number, _windowEnd: number, maxAttempts: number, at: number) {
+      const key = `ip:${ipHash}`;
+      const row = state.accessLinkRequests.get(key);
+      if (!row || row < windowStart) {
+        state.accessLinkRequests.set(key, at as any);
+        (state as any).doctorIpCounts = (state as any).doctorIpCounts || new Map();
+        (state as any).doctorIpCounts.set(key, 1);
+        return true;
+      }
+      const counts = (state as any).doctorIpCounts || new Map();
+      const count = counts.get(key) ?? 1;
+      if (count >= maxAttempts) return false;
+      counts.set(key, count + 1);
+      (state as any).doctorIpCounts = counts;
+      state.accessLinkRequests.set(key, at as any);
       return true;
     },
 

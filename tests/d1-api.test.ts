@@ -44,13 +44,13 @@ async function harness(options: { email?: boolean; cookie?: CookiePolicy; initia
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const cookieOf = (response: Response) => response.headers.get('set-cookie')!.split(';')[0];
-  const tokenOf = (message: OutgoingEmail) => message.text.match(/#([0-9a-f]{64})/)![1];
+  const codeOf = (message: OutgoingEmail) => message.text.match(/\b\d{6}\b/)![0];
 
   /** Pide el enlace y lo usa contra la ruta real de ingreso. */
   async function doctor() {
-    const requested = await request('POST', '/api/doctor/request-link');
+    const requested = await request('POST', '/api/doctor/request-code', { website: '' });
     expect(requested.status).toBe(200);
-    const opened = await request('POST', '/api/doctor/session', { token: tokenOf(mail.at(-1)!) });
+    const opened = await request('POST', '/api/doctor/verify-code', { code: (mail.at(-1)!.text.match(/\b\d{6}\b/)?.[0]) });
     expect(opened.status).toBe(200);
     return cookieOf(opened);
   }
@@ -74,7 +74,7 @@ async function harness(options: { email?: boolean; cookie?: CookiePolicy; initia
   }
 
   return {
-    storage, database, mail, request, doctor, patient, prescribe, cookieOf, tokenOf,
+    storage, database, mail, request, doctor, patient, prescribe, cookieOf, codeOf,
     advance: (ms: number) => { clock += ms; },
   };
 }
@@ -174,7 +174,7 @@ describe('aplicación sobre D1', () => {
 describe('ingreso de la médica por correo', () => {
   it('envía un enlace de un solo uso y no lo expone en la respuesta ni en la base', async () => {
     const h = await harness();
-    const requested = await h.request('POST', '/api/doctor/request-link');
+    const requested = await h.request('POST', '/api/doctor/request-code', { website: '' });
     expect(requested.status).toBe(200);
     // La respuesta es siempre la misma y no incluye el token.
     const message = (await requested.json()).message as string;
@@ -182,7 +182,7 @@ describe('ingreso de la médica por correo', () => {
 
     expect(h.mail).toHaveLength(1);
     expect(h.mail[0].to).toBe(doctorAddress);
-    const token = h.tokenOf(h.mail[0]);
+    const token = (h.mail[0].text.match(/\b\d{6}\b/)?.[0]);
     expect(h.mail[0].text).toContain(`${origin}/acceso#`);
 
     // En la base y en la auditoría vive el hash del token, nunca el token.
@@ -193,49 +193,49 @@ describe('ingreso de la médica por correo', () => {
     expect(JSON.stringify(audit)).not.toContain(token);
 
     // Un solo uso: la primera vez abre la sesión, la segunda no sirve.
-    const opened = await h.request('POST', '/api/doctor/session', { token });
+    const opened = await h.request('POST', '/api/doctor/verify-code', { token });
     expect(opened.status).toBe(200);
     expect(opened.headers.get('set-cookie')).toContain('HttpOnly');
     expect((await h.request('GET', '/api/doctor/patients', undefined, h.cookieOf(opened))).status).toBe(200);
-    expect((await h.request('POST', '/api/doctor/session', { token })).status).toBe(401);
+    expect((await h.request('POST', '/api/doctor/verify-code', { token })).status).toBe(401);
   });
 
   it('respeta el enfriamiento y descarta el enlace vencido o reemplazado', async () => {
     const h = await harness();
-    await h.request('POST', '/api/doctor/request-link');
-    const first = h.tokenOf(h.mail[0]);
+    await h.request('POST', '/api/doctor/request-code', { website: '' });
+    const first = (h.mail[0].text.match(/\b\d{6}\b/)?.[0]);
     // Dentro del enfriamiento no se envía otro correo.
-    await h.request('POST', '/api/doctor/request-link');
+    await h.request('POST', '/api/doctor/request-code', { website: '' });
     expect(h.mail).toHaveLength(1);
-    h.advance(policy.accessLinkCooldown);
-    await h.request('POST', '/api/doctor/request-link');
+    h.advance(policy.doctorCodeCooldown);
+    await h.request('POST', '/api/doctor/request-code', { website: '' });
     expect(h.mail).toHaveLength(2);
-    const second = h.tokenOf(h.mail[1]);
+    const second = (h.mail[1].text.match(/\b\d{6}\b/)?.[0]);
     expect(second).not.toBe(first);
     // Un enlace nuevo invalida el anterior.
-    expect((await h.request('POST', '/api/doctor/session', { token: first })).status).toBe(401);
+    expect((await h.request('POST', '/api/doctor/verify-code', { code: first   })).status).toBe(401);
     // Y el vigente vence por tiempo.
-    h.advance(policy.accessLinkLifetime);
-    expect((await h.request('POST', '/api/doctor/session', { token: second })).status).toBe(401);
+    h.advance(policy.doctorCodeLifetime);
+    expect((await h.request('POST', '/api/doctor/verify-code', { code: second   })).status).toBe(401);
   });
 
   it('rechaza enlaces inventados, mal formados o sin configuración de correo', async () => {
     const h = await harness();
-    expect((await h.request('POST', '/api/doctor/session', { token: 'a'.repeat(64) })).status).toBe(401);
-    expect((await h.request('POST', '/api/doctor/session', { token: 'no-es-un-token' })).status).toBe(401);
-    expect((await h.request('POST', '/api/doctor/session', {})).status).toBe(401);
+    expect((await h.request('POST', '/api/doctor/verify-code', { code: '123456'   })).status).toBe(401);
+    expect((await h.request('POST', '/api/doctor/verify-code', { code: '12345a'   })).status).toBe(401);
+    expect((await h.request('POST', '/api/doctor/verify-code', {})).status).toBe(401);
     expect((await h.request('GET', '/api/doctor/patients')).status).toBe(401);
 
     const closed = await harness({ email: false });
-    expect((await closed.request('POST', '/api/doctor/request-link')).status).toBe(503);
+    expect((await closed.request('POST', '/api/doctor/request-code', { website: '' })).status).toBe(503);
     expect(closed.mail).toHaveLength(0);
     expect(await closed.database.prepare('SELECT count(*) AS total FROM access_links').get()).toEqual({ total: 0 });
   });
 
   it('la política por defecto de sesión es la de producción: Secure, HttpOnly y sin prefijo demo', async () => {
     const h = await harness();
-    await h.request('POST', '/api/doctor/request-link');
-    const opened = await h.request('POST', '/api/doctor/session', { token: h.tokenOf(h.mail[0]) });
+    await h.request('POST', '/api/doctor/request-code', { website: '' });
+    const opened = await h.request('POST', '/api/doctor/verify-code', { token: (h.mail[0].text.match(/\b\d{6}\b/)?.[0]) });
     const raw = opened.headers.get('set-cookie')!;
     expect(raw).toMatch(/^doctor=/);
     expect(raw).toContain('Secure');
@@ -244,8 +244,8 @@ describe('ingreso de la médica por correo', () => {
     expect(raw).not.toContain('demo_');
     // La demostración declara su propia política aparte (`demoCookies`).
     const demo = await harness({ cookie: { prefix: 'demo_', secure: false } });
-    await demo.request('POST', '/api/doctor/request-link');
-    const local = (await demo.request('POST', '/api/doctor/session', { token: demo.tokenOf(demo.mail[0]) })).headers.get('set-cookie')!;
+    await demo.request('POST', '/api/doctor/request-code', { website: '' });
+    const local = (await demo.request('POST', '/api/doctor/verify-code', { token: demo.codeOf(demo.mail[0]) })).headers.get('set-cookie')!;
     expect(local).toMatch(/^demo_doctor=/);
     expect(local).not.toContain('Secure');
   });

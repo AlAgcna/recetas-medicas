@@ -121,12 +121,6 @@ export function createApp(options: AppOptions) {
     return c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || c.req.header('X-Real-IP') || undefined;
   }
 
-  function isArgentinaIp(ip: string | undefined) {
-    if (!ip) return false;
-    // En producción detrás de Cloudflare siempre viene CF-Connecting-IP; validamos con cf-ipcountry si existe
-    return true;
-  }
-
   app.use('*', async (c, next) => {
     if (options.ready) await options.ready;
     c.header('Cache-Control', 'no-store');
@@ -231,7 +225,6 @@ export function createApp(options: AppOptions) {
   // Código numérico de 6 dígitos por correo. Un solo uso, vencimiento, intentos limitados,
   // cooldown, límite por IP y filtro por país (Argentina).
   const doctorCodeRequest = { message: 'Si el correo del consultorio está configurado, te enviamos un código de acceso.' };
-  const doctorCodeRejected = () => c.json({ message: 'Código incorrecto, vencido o no disponible. Pedí uno nuevo.' }, 401);
   app.post('/api/doctor/request-code', async c => {
     if (!sendEmail || !doctorEmail) {
       return c.json({ message: 'El ingreso por correo todavía no está configurado.' }, 503);
@@ -281,14 +274,14 @@ export function createApp(options: AppOptions) {
   });
   app.post('/api/doctor/verify-code', async c => {
     const at = now();
-    if (!withinLimit('doctor-verifications', 50, policy.doctorCodeCooldown)) return doctorCodeRejected();
+    if (!withinLimit('doctor-verifications', 50, policy.doctorCodeCooldown)) return c.json({ message: 'Código incorrecto, vencido o no disponible. Pedí uno nuevo.' }, 401);
     const parsed = z.object({ code: z.string().regex(/^\d{6}$/) }).safeParse(await body(c));
-    if (!parsed.success) return doctorCodeRejected();
+    if (!parsed.success) return c.json({ message: 'Código incorrecto, vencido o no disponible. Pedí uno nuevo.' }, 401);
     const challenge = await storage.getDoctorChallenge();
-    if (!challenge) return doctorCodeRejected();
+    if (!challenge) return c.json({ message: 'Código incorrecto, vencido o no disponible. Pedí uno nuevo.' }, 401);
     const signature = Uint8Array.from(challenge.verifier.match(/../g)!, item => parseInt(item, 16));
     const matches = await crypto.subtle.verify('HMAC', await secret, signature, encoder.encode(`${challenge.id}:${parsed.data.code}`));
-    if (!await storage.consumeDoctorChallenge(challenge.id, matches, policy.doctorCodeAttempts, at)) return doctorCodeRejected();
+    if (!await storage.consumeDoctorChallenge(challenge.id, matches, policy.doctorCodeAttempts, at)) return c.json({ message: 'Código incorrecto, vencido o no disponible. Pedí uno nuevo.' }, 401);
     const session = await openSession(c, 'doctor');
     return c.json({ role: session.role, expiresAt: session.expiresAt });
   });
@@ -296,7 +289,7 @@ export function createApp(options: AppOptions) {
     return c.json({ message: 'Usá el ingreso con código por correo.' }, 400);
   });
   app.post('/api/doctor/session', async c => {
-    return doctorCodeRejected();
+    return c.json({ message: 'Código incorrecto, vencido o no disponible. Pedí uno nuevo.' }, 401);
   });
 
   app.use('/api/doctor/*', authenticate('doctor'));
