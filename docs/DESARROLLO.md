@@ -94,7 +94,9 @@ npx wrangler dev --config wrangler.local.toml --port 8791
    Salir, continuarlo desde la ficha y finalizarlo tras revisión.
 5. Corregir una consulta finalizada con «Enmendar esta consulta»: exige un motivo
    y conserva la versión anterior en el historial de la consulta.
-6. Preparar indicaciones o un PDF sintético, ver la vista previa y publicar.
+6. En «Añadir Indicación/Receta», elegir la tarjeta de indicación o de receta PDF.
+   Para una indicación, elegir copiar la última o empezar desde cero (sin anteriores,
+   solo se habilita desde cero). Revisar la vista previa y publicar explícitamente.
 7. Revisar por separado consultas, documentos internos y entregas al paciente.
 8. Abrir «Estadísticas» y elegir un mes para ver pacientes atendidos, consultas,
    recetas publicadas y desglose por cobertura.
@@ -119,9 +121,13 @@ tildes o mayúsculas y conserva coberturas anteriores al volver a editar la fich
   la médica y deja de estar disponible en el listado y la descarga del paciente.
 - Si otra pestaña cambió la activa mientras se revisaba, el servidor devuelve
   conflicto. No sobrescribe la nueva ni descarta el contenido del formulario.
-- La sección de ficha muestra la general vigente, la específica activa, recetas
-  y un historial desplegable de específicas. El apartado general conserva su
-  propio historial. No hay eliminación ni retiro manual implementados.
+- La sección profesional de ficha muestra la general vigente en un desplegable
+  cerrado por defecto. Todas las específicas aparecen en una lista de más reciente
+  a más antigua, con fecha y hora de publicación de La Rioja, título y estado
+  vigente/histórica; cada texto se despliega por separado. Las recetas PDF quedan
+  en otra lista, con su descarga. El portal del paciente no cambia: lee completas
+  solo las indicaciones activas. El apartado general conserva su propio historial.
+  No hay eliminación ni retiro manual implementados.
 - La comparación de versión y sustitución son atómicas dentro de un proceso en
   memoria. En D1 se necesitarán garantías distribuidas y de unicidad equivalentes.
 

@@ -203,7 +203,18 @@ small { font-size: 14px; }
 .document-card svg { color: #6b8976; }
 .publication-card { padding: 25px; margin-bottom: 15px; }
 .publication-card p { font-size: 15px; margin: 15px 0; }
-.general-indication-summary > h3 { margin-top: 15px; }
+.publication-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; list-style: none; padding: 20px 24px; cursor: pointer; border-radius: 13px; }
+.publication-disclosure > summary::-webkit-details-marker { display: none; }
+.publication-disclosure > summary:hover { background: #f4f8f3; }
+.publication-disclosure > summary > svg { color: var(--green); transition: transform .15s; }
+.publication-disclosure[open] > summary > svg { transform: rotate(90deg); }
+.publication-summary-text { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-width: 0; }
+.publication-summary-text strong { font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+.publication-summary-text time { font-size: 14px; color: var(--muted); }
+.general-indication-summary .publication-summary-text { align-items: flex-start; flex-direction: column; }
+.publication-disclosure-content { border-top: 1px solid var(--border); padding: 22px 24px; }
+.publication-disclosure-content p { font-size: 16px; margin-bottom: 0; }
+.indication-timeline { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
 .indication-history { margin: 23px 0; padding: 22px 25px; }
 .indication-history summary { cursor: pointer; font-weight: 600; color: var(--muted); }
 .historical-indication { border-top: 1px solid var(--border); margin-top: 18px; padding-top: 18px; }
@@ -233,13 +244,13 @@ small { font-size: 14px; }
 .clinical-section { border-top: 1px solid #e6ede6; padding-top: 23px; margin-top: 25px; }
 .clinical-section h2 { font-size: 19px; }
 .preserve-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
-.kind-selector { border: 0; padding: 0; margin: 0 0 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-.kind-selector legend { font-weight: 600; margin-bottom: 13px; }
-.kind-selector > label { display: flex; align-items: center; gap: 12px; border: 1px solid #cddbcf; border-radius: 10px; padding: 16px; margin: 0; cursor: pointer; }
-.kind-selector > label.chosen { background: #eff7f0; border-color: var(--green); }
-.kind-selector input { width: 17px; height: 17px; min-height: 17px; margin: 0; accent-color: var(--green); }
-.kind-selector strong { font-size: 15px; display: block; }
-.kind-selector small { font-size: 12px; margin-top: 3px; }
+.publication-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.publication-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 26px; border: 1px solid #bdcfc3; border-radius: 12px; background: white; color: var(--green); text-align: left; }
+.publication-choice:hover:not(:disabled) { background: #eff7f0; border-color: var(--green); }
+.publication-choice strong { font-size: 20px; line-height: 1.4; }
+.publication-choice span { font-size: 15px; line-height: 1.6; color: var(--muted); }
+.publication-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+.publication-editor-heading h2 { margin: 0; }
 .preview-card > h2 { margin-top: 20px; }
 .recipient { display: flex; flex-direction: column; background: #f5f8f3; border: 1px solid var(--border); border-radius: 9px; padding: 17px 20px; margin: 20px 0; }
 .recipient > span { font-size: 10px; letter-spacing: .1em; color: var(--muted); }
@@ -402,7 +413,9 @@ small { font-size: 14px; }
   .consultation-row .document-symbol { display: none; }
   .consultation-row .inline-heading { gap: 8px; }
   .consultation-row h3 { font-size: 15px; }
-  .kind-selector { grid-template-columns: 1fr; }
+  .publication-choices { grid-template-columns: 1fr; }
+  .publication-disclosure > summary, .publication-disclosure-content { padding: 18px; }
+  .publication-summary-text { align-items: flex-start; flex-direction: column; }
   .delivery-link { padding: 18px; }
   .delivery-link > svg:first-child { display: none; }
   .section-heading { flex-wrap: wrap; }

@@ -177,6 +177,8 @@ test('vista previa, publicación y acceso autónomo con código simulado', async
   await page.getByRole('heading', { name: 'Ejemplo, Ana' }).click();
   await page.getByRole('tab', { name: /Indicaciones y Recetas/ }).click();
   await page.getByRole('link', { name: 'Añadir Indicación/Receta', exact: true }).click();
+  await page.getByRole('button', { name: 'Crear una indicación' }).click();
+  await page.getByRole('button', { name: 'Crear desde cero' }).click();
   await page.getByLabel('Título', { exact: true }).fill('Entrega de prueba del recorrido');
   await page.getByLabel('Indicaciones para el paciente', { exact: true }).fill('Contenido ficticio, no es consejo médico.\nSegunda línea de ejemplo para leer en pantalla.');
   await page.getByRole('button', { name: 'Vista previa', exact: true }).click();
@@ -292,15 +294,17 @@ test('crea una indicación nueva a partir de la última sin modificar la anterio
   const firstPublication = (await first.json()).publication;
 
   await page.goto(`/profesional/pacientes/${patient.id}/entrega`);
+  await expect(page.getByLabel('Título', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Crear una indicación' }).click();
   await expect(page.getByText('Última indicación: «Indicación inicial»')).toBeVisible();
-  await page.getByRole('button', { name: 'Crear a partir de esta indicación' }).click();
+  await page.getByRole('button', { name: 'Crear a partir de la última indicación' }).click();
   await expect(page.getByLabel('Título', { exact: true })).toHaveValue('Indicación inicial');
   await expect(page.getByLabel('Indicaciones para el paciente', { exact: true })).toHaveValue('Contenido inicial ficticio');
   await expect(page.getByRole('status')).toContainText('la anterior no se modifica');
 
   // La copia es sólo texto: hasta confirmar, la anterior sigue activa e intacta.
   const before = await (await page.request.get(`/api/doctor/patients/${patient.id}`)).json();
-  expect(before.publications.filter((item: { active: boolean }) => item.active)).toHaveLength(1);
+  expect(before.publications).toEqual([firstPublication]);
 
   await page.getByLabel('Título', { exact: true }).fill('Indicación de seguimiento');
   await page.getByLabel('Indicaciones para el paciente', { exact: true }).fill('Contenido actualizado ficticio');
@@ -316,6 +320,70 @@ test('crea una indicación nueva a partir de la última sin modificar la anterio
   expect(indications.find((item: { active: boolean }) => item.active).title).toBe('Indicación de seguimiento');
   expect(indications.find((item: { id: string }) => item.id === firstPublication.id))
     .toMatchObject({ title: 'Indicación inicial', content: 'Contenido inicial ficticio', active: false });
+});
+
+test('tarjetas, inicio desde cero y receta PDF sin publicar durante la elección', async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await enterDoctor(page);
+  const headers = { Origin: baseURL!, 'X-Portal-Request': '1' };
+  const created = await page.request.post('/api/doctor/patients', { headers, data: { dni: '00000112', whatsapp: '+5493800000112', firstName: 'Sara', lastName: 'Tarjetas' } });
+  expect(created.status()).toBe(201);
+  const { patient } = await created.json();
+  const publications: string[] = [];
+  page.on('request', request => {
+    if (request.method() === 'POST' && /\/(publications|prescriptions)$/.test(new URL(request.url()).pathname)) publications.push(request.url());
+  });
+  await page.goto(`/profesional/pacientes/${patient.id}`);
+  await page.getByRole('tab', { name: /Indicaciones y Recetas/ }).click();
+  await expect(page.getByText('Todavía no hay indicaciones para este paciente')).toBeVisible();
+  await page.getByRole('link', { name: 'Añadir Indicación/Receta', exact: true }).click();
+  await expect(page.getByLabel('Título', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('PDF original de la receta', { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  await page.screenshot({ path: '/tmp/opencode/portal-clinico-tarjetas-movil.png', fullPage: true });
+  await page.getByRole('button', { name: 'Crear una indicación' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: '¿Cómo querés crear la indicación?' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Crear a partir de la última indicación' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Volver a elegir el tipo' }).click();
+  await page.getByRole('button', { name: 'Crear una indicación' }).click();
+  await page.getByRole('button', { name: 'Crear desde cero' }).click();
+  await expect(page.getByLabel('Título', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Indicaciones para el paciente', { exact: true })).toHaveValue('');
+  await page.getByLabel('Título', { exact: true }).fill('Texto ficticio sin publicar');
+  await page.getByLabel('Indicaciones para el paciente', { exact: true }).fill('Debe conservarse al cancelar el cambio.');
+  await page.getByRole('button', { name: 'Vista previa', exact: true }).click();
+  await page.getByRole('button', { name: 'Volver a editar' }).click();
+  await expect(page.getByLabel('Título', { exact: true })).toHaveValue('Texto ficticio sin publicar');
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('button', { name: 'Cambiar elección' }).click();
+  await expect(page.getByLabel('Indicaciones para el paciente', { exact: true })).toHaveValue('Debe conservarse al cancelar el cambio.');
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Cambiar elección' }).click();
+  await page.getByRole('button', { name: 'Subir una receta' }).click();
+  await expect(page.getByRole('heading', { name: 'Subir receta en PDF' })).toBeFocused();
+  await expect(page.getByLabel('Indicaciones para el paciente', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Descripción de la receta', { exact: true })).toBeVisible();
+  const sample = await page.request.get('/api/doctor/sample-prescription');
+  expect(sample.ok()).toBe(true);
+  await page.getByLabel('PDF original de la receta', { exact: true }).setInputFiles({ name: 'receta-ficticia.pdf', mimeType: 'application/pdf', buffer: await sample.body() });
+  await page.getByRole('button', { name: 'Vista previa', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Confirmar publicación' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Volver a editar' }).click();
+  await expect(page.getByText(/Archivo seleccionado: receta-ficticia.pdf/)).toBeVisible();
+  await page.getByRole('button', { name: 'Vista previa', exact: true }).click();
+  expect(publications).toEqual([]);
+  const before = await (await page.request.get(`/api/doctor/patients/${patient.id}`)).json();
+  expect(before.publications).toEqual([]);
+  await page.getByLabel('Confirmo que revisé el paciente y el PDF seleccionado. En esta demo el documento es ficticio.', { exact: true }).check();
+  await page.getByRole('button', { name: 'Confirmar publicación' }).click();
+  await expect(page.getByText('Documento publicado.')).toBeVisible();
+  expect(publications).toHaveLength(1);
+  await page.getByRole('tab', { name: /Indicaciones y Recetas/ }).click();
+  await expect(page.getByRole('link', { name: 'Descargar PDF original', exact: true })).toBeVisible();
+  const detail = await (await page.request.get(`/api/doctor/patients/${patient.id}`)).json();
+  expect(detail.publications).toHaveLength(1);
+  expect(detail.publications[0].kind).toBe('prescription');
 });
 
 test('una general y una específica, descarga opcional y reemplazos con historial', async ({ page, baseURL }) => {
@@ -339,6 +407,10 @@ test('una general y una específica, descarga opcional y reemplazos con historia
 
   async function publishSpecific(title: string, replacing: boolean) {
     await page.goto(`/profesional/pacientes/${patient.id}/entrega`);
+    await page.getByRole('button', { name: 'Crear una indicación' }).click();
+    await page.getByRole('button', { name: 'Crear desde cero' }).click();
+    await expect(page.getByLabel('Título', { exact: true })).toHaveValue('');
+    await expect(page.getByLabel('Indicaciones para el paciente', { exact: true })).toHaveValue('');
     await page.getByLabel('Título', { exact: true }).fill(title);
     await page.getByLabel('Indicaciones para el paciente', { exact: true }).fill(`Contenido específico ficticio: ${title}`);
     await page.getByRole('button', { name: 'Vista previa', exact: true }).click();
@@ -376,7 +448,31 @@ test('una general y una específica, descarga opcional y reemplazos con historia
 
   await page.goto(`/profesional/pacientes/${patient.id}`);
   await page.getByRole('tab', { name: /Indicaciones y Recetas/ }).click();
-  await page.getByText('Historial de indicaciones específicas', { exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Específica inicial de Julia' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Específica vigente de Julia' })).toBeVisible();
+  const general = page.locator('.general-indication-summary');
+  await expect(general).not.toHaveAttribute('open');
+  await expect(general.locator('.preserve-lines')).toBeHidden();
+  await general.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(general.locator('.preserve-lines')).toHaveText('Texto general actualizado, solo de ejemplo.');
+  await expect(general.locator('.preserve-lines')).toBeVisible();
+  await page.keyboard.press('Space');
+  await expect(general.locator('.preserve-lines')).toBeHidden();
+
+  const timeline = page.getByRole('list', { name: 'Evolución de indicaciones' });
+  await expect(timeline.locator('summary strong')).toHaveText(['Específica vigente de Julia', 'Específica inicial de Julia']);
+  const versions = timeline.locator('details');
+  await expect(versions).toHaveCount(2);
+  for (const version of await versions.all()) {
+    await expect(version).not.toHaveAttribute('open');
+    await expect(version.locator('summary time')).toBeVisible();
+    await expect(version.locator('summary time')).toHaveAttribute('datetime', /\d{4}-\d{2}-\d{2}T/);
+    await expect(version.locator('.preserve-lines')).toBeHidden();
+    await version.locator('summary').click();
+    await expect(version.locator('.preserve-lines')).toBeVisible();
+  }
+  await expect(versions.first().locator('summary')).toContainText('Vigente · Visible en el portal');
+  await expect(versions.last().locator('summary')).toContainText('Histórica · No visible en el portal');
+  await expect(versions.last()).toContainText('Reemplazada el');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  await page.screenshot({ path: '/tmp/opencode/portal-clinico-evolucion-movil.png', fullPage: true });
 });

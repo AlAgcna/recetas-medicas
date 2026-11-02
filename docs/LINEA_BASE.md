@@ -180,10 +180,21 @@ documento ya publicado no debe cambiar silenciosamente al editar su borrador.
   Se muestra a todos los pacientes autenticados, incluidos los que se incorporen
   después; no es contenido público anónimo ni una copia por ficha.
 - La específica se prepara desde la ficha y nunca se comparte con otros pacientes.
-- Al preparar la específica, «Crear a partir de esta indicación» copia al formulario
-  el título y el texto de la última indicación del paciente, activa o histórica.
+- «Añadir Indicación/Receta» comienza con dos tarjetas: «Crear una indicación»
+  y «Subir una receta». El formulario aparece después de elegir el tipo.
+- Para una indicación se elige entre «Crear a partir de la última indicación»
+  y «Crear desde cero». La primera copia el título y el texto de la última
+  específica del paciente, activa o histórica; sin versiones previas se informa
+  y esa opción queda deshabilitada. La segunda abre los campos vacíos.
   La copia no modifica la anterior: al publicar, la nueva reemplaza a la activa y
-  la anterior pasa al historial. Sirve para seguir la evolución sin reescribir todo.
+  la anterior pasa al historial. Cambiar de elección con cambios sin publicar
+  requiere confirmar su descarte.
+- En la pestaña profesional «Indicaciones y Recetas», la general se muestra en
+  un desplegable cerrado por defecto. Las específicas, incluida la vigente,
+  forman una lista de más reciente a más antigua con fecha y hora de publicación
+  en La Rioja, título y estado. Cada versión permite desplegar su texto para
+  seguir la evolución; las históricas no se muestran al paciente. Las recetas
+  PDF se listan por separado. Esto no cambia la lectura del portal del paciente.
 - General y específica se leen completas en pantalla, con descarga opcional en
   texto UTF-8 en el prototipo. Las recetas PDF no consumen estos dos lugares.
 - Publicar otra del mismo ámbito requiere vista previa y confirmación del
