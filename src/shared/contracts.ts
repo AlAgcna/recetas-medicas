@@ -30,7 +30,17 @@ export const vitalSchema = z.object({
   systolic: measurement, diastolic: measurement, heartRate: measurement,
   respiratoryRate: measurement, temperature: measurement,
   oxygen: z.number().positive().max(100).optional(), weight: measurement, height: measurement,
+  abdominalPerimeter: z.number().positive('La medición debe ser mayor que cero.')
+    .max(300, 'Ingresá el perímetro abdominal en centímetros.').optional(),
 });
+
+// IMC con el peso en kilogramos y la talla en centímetros. No se guarda: se
+// calcula desde los signos vitales para no duplicar un dato que puede cambiar.
+export function bodyMassIndex(vitals: { weight?: number; height?: number }) {
+  if (!vitals.weight || !vitals.height || vitals.height <= 0) return undefined;
+  const metres = vitals.height / 100;
+  return Math.round((vitals.weight / (metres * metres)) * 10) / 10;
+}
 
 export const consultationSchema = z.object({
   date: z.iso.date('Ingresá una fecha válida.'),

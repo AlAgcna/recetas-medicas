@@ -18,6 +18,7 @@ export const insuranceOptions = [
   'Particular',
   'Boreal',
   'Nobis',
+  'Medicus',
   'Medicus Fuerzas de Seguridad',
   'Mutual de Luz y Fuerza',
   'Galeno',

@@ -64,16 +64,18 @@ convertir propuestas pendientes en decisiones definitivas.
 - El catálogo solicitado está en `../../../src/shared/insurance.ts`: OSDE, Swiss
   Medical, Federada Salud, Sancor Salud, OSUNLaR, APOS, OSPJN, OSSEG, OSUTHGRA,
   PAMI, Policía Federal, DASUTEN, OSSACRA, Sanatorio Pasteur, Particular, Boreal,
-  Nobis, Medicus Fuerzas de Seguridad (una opción), Mutual de Luz y Fuerza, Galeno,
+  Nobis, Medicus, Medicus Fuerzas de Seguridad (dos opciones distintas), Mutual de
+  Luz y Fuerza, Galeno,
   Jerárquico Salud, OSFATUN, OSSBA y Prevención Salud. No implica convenios confirmados.
 - Conservar coberturas previas ajenas al catálogo bajo «Otra». Mostrar y agrupar
   «Sin obra social» como «Particular» sin reescribir consultas históricas.
 - Verificar el contacto inicialmente y al cambiarlo, no aprobar cada ingreso.
 - La ficha contiene consultas independientes con fecha, signos vitales, motivo,
   examen físico y diagnóstico. No sobrescribir la consulta anterior.
-- Propuesta de signos vitales: presión arterial, frecuencias cardíaca y
-  respiratoria, temperatura y saturación; peso/talla opcionales a validar.
-  Mediciones no tomadas no deben convertirse en ceros ni datos inventados.
+- Signos vitales: presión arterial, frecuencias cardíaca y
+  respiratoria, temperatura, saturación, peso, talla y perímetro abdominal (cm);
+  el IMC se calcula con peso y talla y no se guarda. Mediciones no tomadas no
+  deben convertirse en ceros ni datos inventados.
 - Documentos Word, análisis, resultados e historia son internos por defecto.
 - El paciente lee en pantalla **solo indicaciones activas** y puede descargarlas
   opcionalmente (texto UTF-8 en la demo). Las recetas van por separado como PDF.

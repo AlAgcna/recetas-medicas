@@ -45,7 +45,8 @@ npx wrangler d1 migrations apply dranallim --remote
 
 Es aditivo y reversible sólo por edición manual del esquema; no borra datos. Al
 confirmar, revisar que liste `0001_persistencia_inicial.sql` y
-`0002_acceso_profesional.sql` y `0003_acceso_medica_codigo.sql`.
+`0002_acceso_profesional.sql`, `0003_acceso_medica_codigo.sql` y
+`0004_perimetro_abdominal.sql`.
 
 ### Incidente de ingreso, 23/10/2026
 
@@ -66,8 +67,43 @@ npx wrangler d1 execute dranallim --remote --file=db/repairs/sesiones_faltantes.
 
 No borra ni modifica `access_sessions`, desafíos o registros clínicos. No resuelve
 el resto del esquema manual: se necesita conciliación revisada, con respaldo y
-autorización antes de migrar datos o retirar tablas. No ejecutar `DROP TABLE` ni
-marcar migraciones como aplicadas para ocultar discrepancias.
+autorización antes de migrar datos o retirar tablas. No marcar migraciones como
+aplicadas para ocultar discrepancias.
+
+### Esquema clínico, 23/10/2026
+
+El ingreso funcionó, pero el alta de pacientes falló con `table patients has no
+column named whatsapp` y el panel con `no such column: superseded_at`. La base
+remota tiene un esquema anterior: `patients` sin `whatsapp` ni
+`contact_verified`; `consultations` y `publications` con otro modelo; falta
+`documents`; `access_challenges` usa `consumed` en lugar de `consumed_at`.
+
+Se comprobó por conteos que las tablas clínicas y de desafíos del paciente están
+vacías (0 filas). `sessions` y las tablas del ingreso de la médica no se tocan.
+La reparación está en `db/repairs/esquema_clinico.sql` y **aborta sin borrar
+nada** si encuentra datos:
+
+```bash
+npx wrangler d1 execute dranallim --remote --file=db/repairs/esquema_clinico.sql
+```
+
+No reemplaza la conciliación de `access_links`, `access_sessions`,
+`internal_documents` y `publication_files`, que quedan sin uso. Tampoco registra
+las migraciones en `d1_migrations`; no marcarlas a mano.
+
+### Perímetro abdominal, 2/11/2026
+
+La migración `0004_perimetro_abdominal.sql` agrega una columna nullable. Como
+`d1_migrations` sigue vacía, aplicarla sola con el archivo, **antes** de
+desplegar el Worker nuevo (el código anterior no la usa, pero el nuevo la
+necesita para guardar consultas):
+
+```bash
+npx wrangler d1 execute dranallim --remote --file=db/migrations/0004_perimetro_abdominal.sql
+```
+
+Es aditiva: no borra ni reescribe consultas. El IMC no agrega columna porque se
+calcula en pantalla.
 
 El otro fallo estaba en el formulario: pasaba JSON ya serializado a `api()`,
 que volvía a serializarlo. Eso rechazaba el código antes de leer el desafío.

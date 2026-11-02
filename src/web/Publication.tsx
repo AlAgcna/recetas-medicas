@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { ArrowLeft, Eye, FileText, Send, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Eye, FileText, History, Send, ShieldCheck } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { displayDni, pdfPolicy, publicationSchema, type GeneralIndications, type Patient, type Publication, type PublicationInput } from '../shared/contracts';
+import { displayDni, displayMoment, pdfPolicy, publicationSchema, type GeneralIndications, type Patient, type Publication, type PublicationInput } from '../shared/contracts';
 import { api, messageOf } from './api';
 import { usePatientDetail } from './Patients';
 import { Alert, Badge, IndicationSignature, Loading, PageHeader, useUnsavedChanges } from './ui';
@@ -12,8 +12,15 @@ export function PublicationPage() {
   const navigate = useNavigate();
   if (loadError) return <Alert>{loadError}</Alert>;
   if (!detail) return <Loading />;
+  // La última indicación específica, activa o histórica, es la base para crear
+  // la siguiente. El paciente sólo sigue viendo la activa.
+  const lastIndication = detail.publications
+    .filter(item => item.kind === 'indication' && item.scope === 'patient')
+    .sort((a, b) => a.publishedAt - b.publishedAt)
+    .at(-1) ?? null;
   return <PublicationEditor scope="patient" patient={detail.patient}
     active={detail.publications.find(item => item.active && item.kind === 'indication') ?? null}
+    lastIndication={lastIndication}
     onPublished={() => navigate(`/profesional/pacientes/${id}`, { state: { notice: 'Documento publicado. El paciente puede acceder sin autorización adicional.' } })} />;
 }
 
@@ -42,7 +49,7 @@ export function GeneralIndicationPage() {
   </>;
 }
 
-type EditorProps = { active: Publication | null; onPublished: () => void } & (
+type EditorProps = { active: Publication | null; lastIndication?: Publication | null; onPublished: () => void } & (
   { scope: 'general' } | { scope: 'patient'; patient: Patient }
 );
 
@@ -64,6 +71,18 @@ function PublicationEditor(props: EditorProps) {
   const unsaved = useUnsavedChanges(dirty);
   const replacing = form.kind === 'indication' && props.active !== null;
   const needsApproval = general || replacing;
+  const [copiedFrom, setCopiedFrom] = useState<Publication | null>(null);
+  // Copia el texto a los campos locales: no modifica la indicación anterior.
+  // Al publicar se crea otra y la activa pasa al historial.
+  function copyLastIndication() {
+    const source = props.lastIndication;
+    if (!source) return;
+    if ((form.title.trim() || form.content.trim())
+      && !window.confirm('Se reemplazará el texto que escribiste. La indicación anterior no se modifica. ¿Continuar?')) return;
+    setForm(previous => ({ ...previous, title: source.title, content: source.content }));
+    setDirty(true);
+    setCopiedFrom(source);
+  }
   function review(event: FormEvent) {
     event.preventDefault();
     const parsed = publicationSchema.safeParse(form);
@@ -100,7 +119,9 @@ function PublicationEditor(props: EditorProps) {
     <PageHeader eyebrow="INDICACIONES Y RECETAS" title={preview ? 'Revisar antes de publicar' : general ? 'Indicación general' : 'Añadir Indicación/Receta'} description={patient ? `${patient.firstName} ${patient.lastName} · DNI ${displayDni(patient.dni)}` : 'Una única indicación general activa para todos los pacientes.'} />
     {error && <Alert>{error}</Alert>}
     {!preview ? <form className="card form-card" onSubmit={review}>
-      {general ? <Alert>Esta indicación se mostrará a todos los pacientes, también a quienes se incorporen después. No incluyas nombres, DNI, diagnósticos ni datos personales.</Alert> : <fieldset className="kind-selector"><legend>¿Qué vas a entregar?</legend><label className={form.kind === 'indication' ? 'chosen' : ''}><input type="radio" name="kind" value="indication" checked={form.kind === 'indication'} onChange={() => { setForm({ kind: 'indication', title: '', content: '' }); setDirty(true); }} /><FileText size={22} /><span><strong>Indicación específica</strong><small>Solo una activa para este paciente</small></span></label><label className={form.kind === 'prescription' ? 'chosen' : ''}><input type="radio" name="kind" value="prescription" checked={form.kind === 'prescription'} onChange={() => { setForm({ kind: 'prescription', title: 'Receta en PDF', content: 'Archivo PDF adjunto, conservado sin modificaciones por el portal.' }); setDirty(true); }} /><FileText size={22} /><span><strong>Receta en PDF</strong><small>Adjuntar el documento original</small></span></label></fieldset>}
+      {general ? <Alert>Esta indicación se mostrará a todos los pacientes, también a quienes se incorporen después. No incluyas nombres, DNI, diagnósticos ni datos personales.</Alert> : <fieldset className="kind-selector"><legend>¿Qué vas a entregar?</legend><label className={form.kind === 'indication' ? 'chosen' : ''}><input type="radio" name="kind" value="indication" checked={form.kind === 'indication'} onChange={() => { setForm({ kind: 'indication', title: '', content: '' }); setCopiedFrom(null); setDirty(true); }} /><FileText size={22} /><span><strong>Indicación específica</strong><small>Solo una activa para este paciente</small></span></label><label className={form.kind === 'prescription' ? 'chosen' : ''}><input type="radio" name="kind" value="prescription" checked={form.kind === 'prescription'} onChange={() => { setForm({ kind: 'prescription', title: 'Receta en PDF', content: 'Archivo PDF adjunto, conservado sin modificaciones por el portal.' }); setCopiedFrom(null); setDirty(true); }} /><FileText size={22} /><span><strong>Receta en PDF</strong><small>Adjuntar el documento original</small></span></label></fieldset>}
+      {!general && form.kind === 'indication' && props.lastIndication && <div className="quiet-note"><History size={20} /><div><p>Última indicación: «{props.lastIndication.title}» · {displayMoment(props.lastIndication.publishedAt)}. Se conserva sin cambios.</p><button type="button" className="text-button" onClick={copyLastIndication}><History size={16} /> Crear a partir de esta indicación</button></div></div>}
+      {copiedFrom && <Alert success>Copiamos el título y el texto de la indicación del {displayMoment(copiedFrom.publishedAt)}. Revisá y editá lo que necesites: la anterior no se modifica y, al publicar, queda en el historial.</Alert>}
       {replacing && <div className="review-notice"><h3>Hay una indicación {general ? 'general' : 'específica'} activa</h3><p>«{props.active!.title}» seguirá activa hasta que confirmes la nueva publicación. Después quedará en el historial, sin borrarse.</p></div>}
       {form.kind === 'prescription' && <>
         <Alert>En esta demostración usá solo PDF ficticios. El portal no emite recetas ni verifica firmas digitales.</Alert>

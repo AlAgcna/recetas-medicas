@@ -68,6 +68,15 @@ describe('adaptador D1: consultas y enmiendas', () => {
     expect((await storage.getConsultation('consulta-1'))?.diagnosis).toBe('Diagnóstico de ejemplo');
   });
 
+  it('guarda el perímetro abdominal como signo vital opcional', async () => {
+    const { storage } = await seed();
+    await storage.saveConsultation(consultation({ vitals: { weight: 82, height: 170, abdominalPerimeter: 98.5 } }));
+    expect((await storage.getConsultation('consulta-1'))?.vitals).toEqual({ weight: 82, height: 170, abdominalPerimeter: 98.5 });
+    // Sin medir no se inventa un valor.
+    await storage.saveConsultation(consultation({ vitals: { systolic: 120 } }));
+    expect((await storage.getConsultation('consulta-1'))?.vitals).toEqual({ systolic: 120 });
+  });
+
   it('la enmienda conserva la versión anterior y no se repite ni se bifurca', async () => {
     const { storage } = await seed();
     await storage.saveConsultation(consultation({ status: 'finalized' }));

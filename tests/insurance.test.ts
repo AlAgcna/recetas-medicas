@@ -3,7 +3,7 @@ import { insuranceKey, insuranceLabel, insuranceOptions, isNamedInsurance } from
 
 describe('catálogo de coberturas del consultorio', () => {
   it('incluye exactamente las coberturas solicitadas, sin perder nombres ni unir opciones', () => {
-    const requested = ['Osde', 'Swiss Medical', 'Federada Salud', 'Sancor Salud', 'Osunlar', 'Apos', 'OSPJN', 'OSSEG', 'Osuthgra', 'Pami', 'Policia Federal', 'Dasuten', 'Ossacra', 'Sanatorio Pasteur', 'Particular', 'Boreal', 'Nobis', 'Medicus Fuerzas de Seguridad', 'Mutual de Luz y Fuerza', 'Galeno', 'Jerarquico Salud', 'Osfatun', 'OSSBA', 'Prevencion Salud'];
+    const requested = ['Osde', 'Swiss Medical', 'Federada Salud', 'Sancor Salud', 'Osunlar', 'Apos', 'OSPJN', 'OSSEG', 'Osuthgra', 'Pami', 'Policia Federal', 'Dasuten', 'Ossacra', 'Sanatorio Pasteur', 'Particular', 'Boreal', 'Nobis', 'Medicus', 'Medicus Fuerzas de Seguridad', 'Mutual de Luz y Fuerza', 'Galeno', 'Jerarquico Salud', 'Osfatun', 'OSSBA', 'Prevencion Salud'];
     expect(insuranceOptions.map(insuranceKey)).toEqual(requested.map(insuranceKey));
     expect(new Set(insuranceOptions.map(insuranceKey)).size).toBe(requested.length);
   });

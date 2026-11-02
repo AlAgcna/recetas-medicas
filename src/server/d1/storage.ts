@@ -35,6 +35,7 @@ function toPatient(row: Row): Patient {
 const vitalsColumns: [string, keyof Consultation['vitals']][] = [
   ['systolic', 'systolic'], ['diastolic', 'diastolic'], ['heart_rate', 'heartRate'], ['respiratory_rate', 'respiratoryRate'],
   ['temperature', 'temperature'], ['oxygen', 'oxygen'], ['weight', 'weight'], ['height', 'height'],
+  ['abdominal_perimeter', 'abdominalPerimeter'],
 ];
 
 function toConsultation(row: Row): Consultation {
@@ -168,21 +169,22 @@ export function createD1Storage(db: SqlDatabase, bucket: FileBucket): Storage {
         consultation.reason, consultation.examination, consultation.diagnosis,
         vitals.systolic ?? null, vitals.diastolic ?? null, vitals.heartRate ?? null, vitals.respiratoryRate ?? null,
         vitals.temperature ?? null, vitals.oxygen ?? null, vitals.weight ?? null, vitals.height ?? null,
-        consultation.insuranceAtVisit, consultation.updatedAt,
+        vitals.abdominalPerimeter ?? null, consultation.insuranceAtVisit, consultation.updatedAt,
       ];
       // `WHERE status = 'draft'` impide pisar una versión finalizada aunque otra
       // solicitud la haya finalizado después de esta lectura.
       const row = await db.prepare(`INSERT INTO consultations (
         id, patient_id, chain_id, date, status, reason, examination, diagnosis,
         systolic, diastolic, heart_rate, respiratory_rate, temperature, oxygen, weight, height,
-        insurance_at_visit, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        abdominal_perimeter, insurance_at_visit, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           date = excluded.date, status = excluded.status, reason = excluded.reason,
           examination = excluded.examination, diagnosis = excluded.diagnosis,
           systolic = excluded.systolic, diastolic = excluded.diastolic, heart_rate = excluded.heart_rate,
           respiratory_rate = excluded.respiratory_rate, temperature = excluded.temperature, oxygen = excluded.oxygen,
           weight = excluded.weight, height = excluded.height,
+          abdominal_perimeter = excluded.abdominal_perimeter,
           insurance_at_visit = excluded.insurance_at_visit, updated_at = excluded.updated_at
         WHERE consultations.status = 'draft'
         RETURNING id`).bind(...values).first<Row>();
@@ -201,8 +203,8 @@ export function createD1Storage(db: SqlDatabase, bucket: FileBucket): Storage {
         db.prepare(`INSERT INTO consultations (
           id, patient_id, chain_id, date, status, reason, examination, diagnosis,
           systolic, diastolic, heart_rate, respiratory_rate, temperature, oxygen, weight, height,
-          insurance_at_visit, updated_at, supersedes_id, amendment_reason)
-          SELECT ?, patient_id, chain_id, ?, 'finalized', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          abdominal_perimeter, insurance_at_visit, updated_at, supersedes_id, amendment_reason)
+          SELECT ?, patient_id, chain_id, ?, 'finalized', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           FROM consultations
           WHERE id = ? AND status = 'finalized' AND superseded_at = ?
             AND NOT EXISTS (SELECT 1 FROM consultations successor WHERE successor.supersedes_id = ?)`)
@@ -210,7 +212,7 @@ export function createD1Storage(db: SqlDatabase, bucket: FileBucket): Storage {
             amendment.id, amendment.date, amendment.reason, amendment.examination, amendment.diagnosis,
             vitals.systolic ?? null, vitals.diastolic ?? null, vitals.heartRate ?? null, vitals.respiratoryRate ?? null,
             vitals.temperature ?? null, vitals.oxygen ?? null, vitals.weight ?? null, vitals.height ?? null,
-            amendment.insuranceAtVisit, at, reviewedId, amendment.amendmentReason ?? null,
+            vitals.abdominalPerimeter ?? null, amendment.insuranceAtVisit, at, reviewedId, amendment.amendmentReason ?? null,
             reviewedId, at, reviewedId,
           ),
       ]);

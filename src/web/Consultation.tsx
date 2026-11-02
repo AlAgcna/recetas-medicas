@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, Check, CheckCircle2, CloudOff, LoaderCircle, LockKeyhole, PencilLine, TriangleAlert } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { amendmentRequestSchema, consultationChain, consultationSchema, displayDate, displayDni, displayMoment, today, type Consultation, type ConsultationInput } from '../shared/contracts';
+import { amendmentRequestSchema, bodyMassIndex, consultationChain, consultationSchema, displayDate, displayDni, displayMoment, today, type Consultation, type ConsultationInput } from '../shared/contracts';
 import { api, ApiError, messageOf } from './api';
 import { usePatientDetail } from './Patients';
 import { Alert, Badge, Loading, PageHeader, useUnsavedChanges } from './ui';
@@ -10,8 +10,27 @@ const measurements = [
   ['systolic', 'Presión arterial sistólica', 'mmHg'], ['diastolic', 'Presión arterial diastólica', 'mmHg'],
   ['heartRate', 'Frecuencia cardíaca', 'lpm'], ['respiratoryRate', 'Frecuencia respiratoria', 'rpm'],
   ['temperature', 'Temperatura', '°C'], ['oxygen', 'Saturación de oxígeno', '%'],
-  ['weight', 'Peso', 'kg'], ['height', 'Talla', 'cm'],
+  ['weight', 'Peso', 'kg'], ['height', 'Talla', 'cm'], ['abdominalPerimeter', 'Perímetro abdominal', 'cm'],
 ] as const;
+// Los mensajes del esquema no dicen qué campo falta. El formulario traduce el
+// primer error a su etiqueta, lo marca y lleva el foco hasta el control.
+const fieldLabels: Record<string, string> = {
+  date: 'Fecha de consulta',
+  reason: 'Motivo de consulta',
+  examination: 'Examen físico',
+  diagnosis: 'Diagnóstico',
+  amendmentReason: 'Motivo de la enmienda',
+  ...Object.fromEntries(measurements.map(([field, label]) => [field, label])),
+};
+const fieldIds: Record<string, string> = {
+  date: 'consultation-date',
+  reason: 'consultation-reason',
+  examination: 'consultation-examination',
+  diagnosis: 'consultation-diagnosis',
+  amendmentReason: 'amendment-reason',
+  ...Object.fromEntries(measurements.map(([field]) => [field, `vital-${field}`])),
+};
+
 const empty = (): ConsultationInput => ({ date: today(), vitals: {}, reason: '', examination: '', diagnosis: '', status: 'draft' });
 
 // El borrador se guarda solo, tras una pausa breve desde la última tecla. Nunca
@@ -58,6 +77,7 @@ export function ConsultationPage() {
   const [reviewing, setReviewing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [invalid, setInvalid] = useState<string[]>([]);
   const [autosave, setAutosave] = useState<Autosave>({ state: 'idle' });
   const navigate = useNavigate();
   const unsaved = useUnsavedChanges(dirty);
@@ -122,16 +142,31 @@ export function ConsultationPage() {
   }
 
   function markDirty() { revision.current += 1; setDirty(true); setReviewing(false); }
+  function clearInvalid(field: string) {
+    setInvalid(previous => previous.filter(item => item !== field));
+  }
+  // Muestra qué campo falta, lo resalta y le da el foco. Sin esto el aviso
+  // genérico «Completá este campo» no indicaba dónde estaba el problema.
+  function reportIssues(issues: readonly { path: PropertyKey[]; message: string }[], fallback: string) {
+    const first = issues[0];
+    const field = first ? String(first.path[0]) : '';
+    const label = fieldLabels[field];
+    setError(first ? (label ? `${label}: ${first.message}` : first.message) : fallback);
+    setInvalid(issues.map(issue => String(issue.path[0])));
+    const element = field ? document.getElementById(fieldIds[field] ?? '') : null;
+    element?.focus();
+    element?.scrollIntoView({ block: 'center' });
+  }
   function update(field: 'date' | 'reason' | 'examination' | 'diagnosis', value: string) {
-    markDirty(); setForm(previous => ({ ...previous, [field]: value }));
+    clearInvalid(field); markDirty(); setForm(previous => ({ ...previous, [field]: value }));
   }
   function updateVital(field: (typeof measurements)[number][0], value: string) {
-    markDirty(); setForm(previous => ({ ...previous, vitals: { ...previous.vitals, [field]: value === '' ? undefined : Number(value) } }));
+    clearInvalid(field); markDirty(); setForm(previous => ({ ...previous, vitals: { ...previous.vitals, [field]: value === '' ? undefined : Number(value) } }));
   }
   function review() {
     const parsed = consultationSchema.safeParse({ ...form, status: 'finalized' });
-    if (!parsed.success) { setError(parsed.error.issues[0]?.message ?? 'Completá la consulta.'); return; }
-    setError(''); setReviewing(true);
+    if (!parsed.success) { reportIssues(parsed.error.issues, 'Completá la consulta.'); return; }
+    setError(''); setInvalid([]); setReviewing(true);
   }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -139,7 +174,7 @@ export function ConsultationPage() {
     if (!id) return;
     setError('');
     const parsed = consultationSchema.safeParse({ ...form, status: 'finalized' });
-    if (!parsed.success) { setError(parsed.error.issues[0]?.message ?? 'Revisá los datos.'); return; }
+    if (!parsed.success) { reportIssues(parsed.error.issues, 'Revisá los datos.'); return; }
     const target = consultationId ?? createdId.current;
     setSaving(true);
     try {
@@ -157,6 +192,7 @@ export function ConsultationPage() {
     setForm(existing);
     setAmendmentReason('');
     setError('');
+    setInvalid([]);
     setReviewing(false);
     setDirty(false);
     setAmending(true);
@@ -166,14 +202,15 @@ export function ConsultationPage() {
     if (existing) setForm(existing);
     setAmendmentReason('');
     setError('');
+    setInvalid([]);
     setReviewing(false);
     setDirty(false);
     setAmending(false);
   }
   function reviewAmendment() {
     const parsed = amendmentRequestSchema.safeParse({ ...form, status: 'finalized', amendmentReason });
-    if (!parsed.success) { setError(parsed.error.issues[0]?.message ?? 'Revisá la enmienda.'); return; }
-    setError(''); setReviewing(true);
+    if (!parsed.success) { reportIssues(parsed.error.issues, 'Revisá la enmienda.'); return; }
+    setError(''); setInvalid([]); setReviewing(true);
   }
   async function submitAmendment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -181,7 +218,7 @@ export function ConsultationPage() {
     if (!existing || !id) return;
     setError('');
     const parsed = amendmentRequestSchema.safeParse({ ...form, status: 'finalized', amendmentReason });
-    if (!parsed.success) { setError(parsed.error.issues[0]?.message ?? 'Revisá la enmienda.'); return; }
+    if (!parsed.success) { reportIssues(parsed.error.issues, 'Revisá la enmienda.'); return; }
     setSaving(true);
     try {
       // La dirección identifica la versión revisada: el servidor rechaza la
@@ -211,6 +248,7 @@ export function ConsultationPage() {
   const labels = amending
     ? { review: 'Revisar y confirmar', confirm: 'Confirmar enmienda', busy: 'Registrando…' }
     : { review: 'Revisar y finalizar', confirm: 'Confirmar finalización', busy: 'Finalizando…' };
+  const imc = bodyMassIndex(form.vitals);
 
   return <>
     <Link className="back-link" to={`/profesional/pacientes/${id}`}><ArrowLeft size={18} /> Volver a la ficha</Link>
@@ -222,16 +260,17 @@ export function ConsultationPage() {
     <div className="editor-status">{amending ? <Badge tone="amber"><PencilLine size={14} /> Enmienda sin confirmar</Badge> : finalized ? <Badge tone="green">Registro finalizado</Badge> : <AutosaveBadge autosave={autosave} resume={Boolean(consultationId)} />}<span><LockKeyhole size={16} /> Solo para uso profesional</span></div>
     {notice && <Alert>{notice}</Alert>}
     {editable ? <form className="card form-card" onSubmit={amending ? submitAmendment : save}>
-      <label className="date-field">Fecha de consulta <span className="required">*</span><input type="date" required value={form.date} readOnly={reviewing} onChange={event => update('date', event.target.value)} /></label>
+      <label className="date-field">Fecha de consulta <span className="required">*</span><input id="consultation-date" type="date" required aria-invalid={invalid.includes('date')} value={form.date} readOnly={reviewing} onChange={event => update('date', event.target.value)} /></label>
       <div className="form-divider" /><div className="form-section-title"><span className="step-number">1</span><div><h2>Signos vitales</h2><p>Dejá vacías las mediciones que no se realizaron.</p></div></div>
-      <div className="vitals-grid">{measurements.map(([field, label, unit]) => <label key={field}>{label}<div className="input-unit"><input type="number" min="0.01" max={field === 'oxygen' ? 100 : 1000} step="any" inputMode="decimal" aria-label={label} placeholder="Sin medir" readOnly={reviewing} value={form.vitals[field] ?? ''} onChange={event => updateVital(field, event.target.value)} /><span>{unit}</span></div></label>)}</div>
+      <div className="vitals-grid">{measurements.map(([field, label, unit]) => <label key={field}>{label}<div className="input-unit"><input id={`vital-${field}`} type="number" min="0.01" max={field === 'oxygen' ? 100 : field === 'abdominalPerimeter' ? 300 : 1000} step="any" inputMode="decimal" aria-label={label} aria-invalid={invalid.includes(field)} placeholder="Sin medir" readOnly={reviewing} value={form.vitals[field] ?? ''} onChange={event => updateVital(field, event.target.value)} /><span>{unit}</span></div></label>)}</div>
+      <p className="helper-text">El IMC {imc === undefined ? 'se calcula automáticamente al cargar peso y talla' : `calculado es ${imc.toLocaleString('es-AR')} kg/m²`}; no se guarda como medición aparte.</p>
       <div className="form-divider" /><div className="form-section-title"><span className="step-number">2</span><div><h2>Registro clínico</h2><p>Estos campos son necesarios para finalizar; un borrador puede quedar incompleto.</p></div></div>
-      <div className="form-field"><label htmlFor="consultation-reason">Motivo de consulta</label><textarea id="consultation-reason" maxLength={5000} rows={3} readOnly={reviewing} value={form.reason} onChange={event => update('reason', event.target.value)} placeholder="¿Qué refiere el paciente?" /></div>
-      <div className="form-field"><label htmlFor="consultation-examination">Examen físico</label><textarea id="consultation-examination" maxLength={10000} rows={4} readOnly={reviewing} value={form.examination} onChange={event => update('examination', event.target.value)} placeholder="Hallazgos de la evaluación" /></div>
-      <div className="form-field"><label htmlFor="consultation-diagnosis">Diagnóstico</label><textarea id="consultation-diagnosis" maxLength={5000} rows={3} readOnly={reviewing} value={form.diagnosis} onChange={event => update('diagnosis', event.target.value)} placeholder="Diagnóstico registrado en esta consulta" /></div>
+      <div className="form-field"><label htmlFor="consultation-reason">Motivo de consulta</label><textarea id="consultation-reason" maxLength={5000} rows={3} aria-invalid={invalid.includes('reason')} readOnly={reviewing} value={form.reason} onChange={event => update('reason', event.target.value)} placeholder="¿Qué refiere el paciente?" /></div>
+      <div className="form-field"><label htmlFor="consultation-examination">Examen físico</label><textarea id="consultation-examination" maxLength={10000} rows={4} aria-invalid={invalid.includes('examination')} readOnly={reviewing} value={form.examination} onChange={event => update('examination', event.target.value)} placeholder="Hallazgos de la evaluación" /></div>
+      <div className="form-field"><label htmlFor="consultation-diagnosis">Diagnóstico</label><textarea id="consultation-diagnosis" maxLength={5000} rows={3} aria-invalid={invalid.includes('diagnosis')} readOnly={reviewing} value={form.diagnosis} onChange={event => update('diagnosis', event.target.value)} placeholder="Diagnóstico registrado en esta consulta" /></div>
       {amending && <>
         <div className="form-divider" /><div className="form-section-title"><span className="step-number">3</span><div><h2>Motivo de la enmienda</h2><p>Queda guardado junto a la versión que se reemplaza.</p></div></div>
-        <div className="form-field"><label htmlFor="amendment-reason">Motivo de la enmienda <span className="required">*</span></label><textarea id="amendment-reason" maxLength={500} rows={2} readOnly={reviewing} value={amendmentReason} onChange={event => { markDirty(); setAmendmentReason(event.target.value); }} placeholder="Por qué se corrige esta consulta finalizada" /></div>
+        <div className="form-field"><label htmlFor="amendment-reason">Motivo de la enmienda <span className="required">*</span></label><textarea id="amendment-reason" maxLength={500} rows={2} aria-invalid={invalid.includes('amendmentReason')} readOnly={reviewing} value={amendmentReason} onChange={event => { clearInvalid('amendmentReason'); markDirty(); setAmendmentReason(event.target.value); }} placeholder="Por qué se corrige esta consulta finalizada" /></div>
       </>}
       {error && <Alert>{error}</Alert>}
       {reviewing && <div className="review-notice">
@@ -251,7 +290,7 @@ export function ConsultationPage() {
         ? <Alert>Esta versión fue reemplazada el {displayMoment(existing!.supersededAt!)}. <Link to={`/profesional/pacientes/${id}/consultas/${currentVersion?.id}`}>Ver la versión vigente</Link></Alert>
         : <Alert success>Registro finalizado. No se sobrescribe: si hay que corregirlo, se registra una enmienda con su motivo y la versión anterior queda en el historial.</Alert>}
       <h2>Signos vitales</h2>
-      <div className="readings-grid">{measurements.map(([field, label, unit]) => <div key={field}><span>{label}</span><strong>{form.vitals[field] === undefined ? 'No registrado' : `${form.vitals[field]} ${unit}`}</strong></div>)}</div>
+      <div className="readings-grid">{measurements.map(([field, label, unit]) => <div key={field}><span>{label}</span><strong>{form.vitals[field] === undefined ? 'No registrado' : `${form.vitals[field]} ${unit}`}</strong></div>)}{imc !== undefined && <div><span>IMC calculado</span><strong>{imc.toLocaleString('es-AR')} kg/m²</strong></div>}</div>
       {([['reason', 'Motivo de consulta'], ['examination', 'Examen físico'], ['diagnosis', 'Diagnóstico']] as const).map(([field, label]) => <div className="clinical-section" key={field}><h2>{label}</h2><p className="preserve-lines">{form[field]}</p></div>)}
       {!superseded && amendmentHistory.length > 0 && <section className="clinical-section">
         <h2>Historial de enmiendas</h2>

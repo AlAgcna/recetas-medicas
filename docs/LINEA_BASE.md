@@ -81,9 +81,10 @@ pertenece al paciente solo porque figure en un Word antiguo.
 
 El listado solicitado incluye: OSDE, Swiss Medical, Federada Salud, Sancor Salud,
 OSUNLaR, APOS, OSPJN, OSSEG, OSUTHGRA, PAMI, Policía Federal, DASUTEN, OSSACRA,
-Sanatorio Pasteur, Particular, Boreal, Nobis, Medicus Fuerzas de Seguridad, Mutual
-de Luz y Fuerza, Galeno, Jerárquico Salud, OSFATUN, OSSBA, Prevención Salud y Otra.
-«Medicus Fuerzas de Seguridad» es una sola opción, tal como fue indicada.
+Sanatorio Pasteur, Particular, Boreal, Nobis, Medicus, Medicus Fuerzas de
+Seguridad, Mutual de Luz y Fuerza, Galeno, Jerárquico Salud, OSFATUN, OSSBA,
+Prevención Salud y Otra. «Medicus» y «Medicus Fuerzas de Seguridad» son dos
+opciones distintas, tal como fueron indicadas (la primera se agregó el 2/11/2026).
 
 La búsqueda ignora tildes y mayúsculas y permite elegir con teclado o puntero.
 «Otra» habilita un nombre libre y conserva coberturas anteriores que no estén en
@@ -98,11 +99,12 @@ reescribir consultas históricas. La lista no confirma convenios del consultorio
 - Examen físico.
 - Diagnóstico.
 
-**Propuesta de desglose de signos vitales**, a validar con la médica: presión
-arterial, frecuencia cardíaca, frecuencia respiratoria, temperatura y saturación
-de oxígeno. Peso y talla pueden agregarse como mediciones complementarias.
-Mostrar unidades explícitas y distinguir un dato no medido de un valor cero.
-No obligar a inventar mediciones para guardar.
+**Signos vitales (actualizado el 2/11/2026 a pedido de la médica):** presión
+arterial, frecuencia cardíaca, frecuencia respiratoria, temperatura, saturación
+de oxígeno, peso, talla y perímetro abdominal en centímetros. El IMC se calcula
+con peso y talla y se muestra como dato derivado; no se guarda ni se completa a
+mano. Mostrar unidades explícitas y distinguir un dato no medido de un valor
+cero. No obligar a inventar mediciones para guardar.
 
 Cada consulta es un registro independiente asociado al paciente. No sobrescribe
 la consulta anterior. El diseño específico de evolución longitudinal del
@@ -178,6 +180,10 @@ documento ya publicado no debe cambiar silenciosamente al editar su borrador.
   Se muestra a todos los pacientes autenticados, incluidos los que se incorporen
   después; no es contenido público anónimo ni una copia por ficha.
 - La específica se prepara desde la ficha y nunca se comparte con otros pacientes.
+- Al preparar la específica, «Crear a partir de esta indicación» copia al formulario
+  el título y el texto de la última indicación del paciente, activa o histórica.
+  La copia no modifica la anterior: al publicar, la nueva reemplaza a la activa y
+  la anterior pasa al historial. Sirve para seguir la evolución sin reescribir todo.
 - General y específica se leen completas en pantalla, con descarga opcional en
   texto UTF-8 en el prototipo. Las recetas PDF no consumen estos dos lugares.
 - Publicar otra del mismo ámbito requiere vista previa y confirmación del

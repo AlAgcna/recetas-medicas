@@ -63,6 +63,10 @@ test('autoguarda el borrador, finaliza la consulta y conserva los campos', async
   await expect(page.getByLabel('Motivo de consulta', { exact: true })).toHaveValue('Motivo ficticio del prototipo');
   await page.getByLabel('Examen físico', { exact: true }).fill('Examen ficticio');
   await page.getByLabel('Diagnóstico', { exact: true }).fill('Registro sin validez clínica');
+  await page.getByLabel('Peso', { exact: true }).fill('70');
+  await page.getByLabel('Talla', { exact: true }).fill('170');
+  await page.getByLabel('Perímetro abdominal', { exact: true }).fill('92');
+  await expect(page.getByText('El IMC calculado es 24,2 kg/m²')).toBeVisible();
   await page.getByRole('button', { name: 'Revisar y finalizar' }).click();
   await expect(page.getByRole('heading', { name: '¿Finalizar esta consulta?', exact: true })).toBeVisible();
   expect(writes.every(status => status === 'draft')).toBe(true);
@@ -72,7 +76,33 @@ test('autoguarda el borrador, finaliza la consulta y conserva los campos', async
   await page.locator('.consultation-row').first().click();
   await expect(page.getByRole('heading', { name: 'Consulta finalizada', exact: true })).toBeVisible();
   await expect(page.getByText('Registro sin validez clínica', { exact: true })).toBeVisible();
-  await expect(page.getByText('No registrado', { exact: true })).toHaveCount(8);
+  await expect(page.getByText('92 cm', { exact: true })).toBeVisible();
+  await expect(page.getByText('24,2 kg/m²', { exact: true })).toBeVisible();
+  await expect(page.getByText('No registrado', { exact: true })).toHaveCount(6);
+});
+
+test('indica qué campo falta para finalizar y lleva el foco hasta él', async ({ page, baseURL }) => {
+  await enterDoctor(page);
+  const headers = { Origin: baseURL!, 'X-Portal-Request': '1' };
+  const created = await page.request.post('/api/doctor/patients', { headers, data: { dni: '00000109', whatsapp: '+5493800000109', firstName: 'Elena', lastName: 'Validación' } });
+  expect(created.ok()).toBe(true);
+  const { patient } = await created.json();
+  await page.goto(`/profesional/pacientes/${patient.id}/consultas/nueva`);
+  await page.getByRole('button', { name: 'Revisar y finalizar' }).click();
+  await expect(page.getByRole('alert')).toContainText('Motivo de consulta: Completá este campo antes de finalizar.');
+  await expect(page.getByLabel('Motivo de consulta', { exact: true })).toBeFocused();
+  await expect(page.getByLabel('Motivo de consulta', { exact: true })).toHaveAttribute('aria-invalid', 'true');
+  await page.getByLabel('Motivo de consulta', { exact: true }).fill('Motivo ficticio');
+  await page.getByRole('button', { name: 'Revisar y finalizar' }).click();
+  await expect(page.getByRole('alert')).toContainText('Examen físico: Completá este campo antes de finalizar.');
+  await expect(page.getByLabel('Examen físico', { exact: true })).toBeFocused();
+  await page.getByLabel('Examen físico', { exact: true }).fill('Examen ficticio');
+  await page.getByRole('button', { name: 'Revisar y finalizar' }).click();
+  await expect(page.getByRole('alert')).toContainText('Diagnóstico: Completá este campo antes de finalizar.');
+  await expect(page.getByLabel('Diagnóstico', { exact: true })).toBeFocused();
+  await page.getByLabel('Diagnóstico', { exact: true }).fill('Diagnóstico ficticio');
+  await page.getByRole('button', { name: 'Revisar y finalizar' }).click();
+  await expect(page.getByRole('heading', { name: '¿Finalizar esta consulta?', exact: true })).toBeVisible();
 });
 
 test('corrige una consulta finalizada con una enmienda y conserva la versión anterior', async ({ page, baseURL }) => {
@@ -247,6 +277,45 @@ test('la búsqueda de coberturas admite tildes, teclado y cancelación sin envia
   await expect(combo).toHaveValue('Mutual de Luz y Fuerza');
   await combo.fill('osunlar');
   await page.screenshot({ path: '/tmp/opencode/portal-clinico-coberturas.png', fullPage: true });
+});
+
+test('crea una indicación nueva a partir de la última sin modificar la anterior', async ({ page, baseURL }) => {
+  await enterDoctor(page);
+  const headers = { Origin: baseURL!, 'X-Portal-Request': '1' };
+  const created = await page.request.post('/api/doctor/patients', { headers, data: { dni: '00000111', whatsapp: '+5493800000111', firstName: 'Marta', lastName: 'Seguimiento' } });
+  expect(created.status()).toBe(201);
+  const { patient } = await created.json();
+  const first = await page.request.post(`/api/doctor/patients/${patient.id}/publications`, {
+    headers, data: { kind: 'indication', title: 'Indicación inicial', content: 'Contenido inicial ficticio', expectedActiveId: null },
+  });
+  expect(first.status()).toBe(201);
+  const firstPublication = (await first.json()).publication;
+
+  await page.goto(`/profesional/pacientes/${patient.id}/entrega`);
+  await expect(page.getByText('Última indicación: «Indicación inicial»')).toBeVisible();
+  await page.getByRole('button', { name: 'Crear a partir de esta indicación' }).click();
+  await expect(page.getByLabel('Título', { exact: true })).toHaveValue('Indicación inicial');
+  await expect(page.getByLabel('Indicaciones para el paciente', { exact: true })).toHaveValue('Contenido inicial ficticio');
+  await expect(page.getByRole('status')).toContainText('la anterior no se modifica');
+
+  // La copia es sólo texto: hasta confirmar, la anterior sigue activa e intacta.
+  const before = await (await page.request.get(`/api/doctor/patients/${patient.id}`)).json();
+  expect(before.publications.filter((item: { active: boolean }) => item.active)).toHaveLength(1);
+
+  await page.getByLabel('Título', { exact: true }).fill('Indicación de seguimiento');
+  await page.getByLabel('Indicaciones para el paciente', { exact: true }).fill('Contenido actualizado ficticio');
+  await page.getByRole('button', { name: 'Vista previa' }).click();
+  await page.getByLabel('Confirmo el reemplazo de la indicación específica activa y su conservación en el historial.', { exact: true }).check();
+  await page.getByRole('button', { name: 'Confirmar publicación' }).click();
+  await expect(page.getByText('Documento publicado.')).toBeVisible();
+
+  const detail = await (await page.request.get(`/api/doctor/patients/${patient.id}`)).json();
+  const indications = detail.publications.filter((item: { kind: string }) => item.kind === 'indication');
+  expect(indications).toHaveLength(2);
+  expect(indications.filter((item: { active: boolean }) => item.active)).toHaveLength(1);
+  expect(indications.find((item: { active: boolean }) => item.active).title).toBe('Indicación de seguimiento');
+  expect(indications.find((item: { id: string }) => item.id === firstPublication.id))
+    .toMatchObject({ title: 'Indicación inicial', content: 'Contenido inicial ficticio', active: false });
 });
 
 test('una general y una específica, descarga opcional y reemplazos con historial', async ({ page, baseURL }) => {

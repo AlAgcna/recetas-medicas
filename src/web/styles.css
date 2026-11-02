@@ -26,6 +26,7 @@ textarea { resize: vertical; }
 input::placeholder, textarea::placeholder { color: #78867e; }
 input:disabled, input:read-only, textarea:read-only { background: #f2f5f2; }
 input:focus, textarea:focus, select:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px #12665920; }
+input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: #a4342a; box-shadow: 0 0 0 3px #a4342a22; }
 :focus-visible { outline: 3px solid #247eac; outline-offset: 4px; }
 h1, h2, h3, p { margin-top: 0; }
 h1 { font-size: clamp(30px, 3vw, 38px); line-height: 1.2; letter-spacing: -.035em; font-weight: 680; margin-bottom: 12px; }
