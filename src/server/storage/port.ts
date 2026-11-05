@@ -1,4 +1,4 @@
-import type { Consultation, InternalDocument, Patient, PdfMetadata, Publication, PublicationInput } from '../../shared/contracts';
+import type { Consultation, ImportedIndication, IndicationImportInput, InternalDocument, Patient, PdfMetadata, Publication, PublicationInput } from '../../shared/contracts';
 
 // Puerto de almacenamiento.
 //
@@ -59,6 +59,7 @@ export type PublicationResult = { publication: Publication; replacedId: string |
 
 /** El PDF original que acompaña a una receta, con los datos que se guardan. */
 export type PrescriptionFile = { bytes: Uint8Array<ArrayBuffer> } & PdfMetadata;
+export type IndicationOriginal = { bytes: Uint8Array<ArrayBuffer>; sha256: string; size: number; originalName: string };
 
 /** Se intentó crear un registro cuyo valor único ya existe (por ejemplo, DNI). */
 export class StorageConflict extends Error {
@@ -102,6 +103,11 @@ export interface Storage {
 
   // ── Documentos internos ────────────────────────────────────────────────────
   listDocumentsByPatient(patientId: string): Promise<InternalDocument[]>;
+  listImportedIndications(patientId: string): Promise<ImportedIndication[]>;
+  getImportedIndication(id: string): Promise<ImportedIndication | undefined>;
+  /** Agrega sólo historial. Null significa que ese original ya está en la ficha. */
+  importIndication(input: Pick<IndicationImportInput, 'title' | 'content' | 'documentDate'>, patientId: string, file: IndicationOriginal, at: number): Promise<ImportedIndication | null>;
+  getIndicationOriginal(id: string): Promise<Uint8Array<ArrayBuffer> | undefined>;
 
   // ── Archivos de recetas (R2) ───────────────────────────────────────────────
   getPublicationFile(publicationId: string): Promise<Uint8Array<ArrayBuffer> | undefined>;

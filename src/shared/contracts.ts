@@ -79,6 +79,18 @@ export const publicationRequestSchema = publicationSchema.extend({
 }).strict();
 export const generalIndicationSchema = publicationRequestSchema.extend({ kind: z.literal('indication') });
 export const pdfPolicy = { maxFileBytes: 5 * 1024 * 1024, maxFormBytes: 5 * 1024 * 1024 + 32 * 1024, maxStoredBytes: 30 * 1024 * 1024 } as const;
+export const indicationImportPolicy = { maxFileBytes: 5 * 1024 * 1024, maxFormBytes: 5 * 1024 * 1024 + 32 * 1024 } as const;
+export const indicationImportSchema = publicationSchema.omit({ kind: true }).extend({
+  documentDate: z.iso.date('Ingresá una fecha válida o marcá que se desconoce.').nullable(),
+  sourceSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  reviewed: z.literal(true, { error: 'Confirmá que revisaste el paciente, el texto y la fecha.' }),
+}).strict();
+export type IndicationImportInput = z.infer<typeof indicationImportSchema>;
+export type ImportedIndication = Pick<IndicationImportInput, 'title' | 'content' | 'documentDate'> & {
+  id: string; patientId: string; importedAt: number;
+  originalName: string; sha256: string; size: number;
+};
+export type IndicationImportPreview = { content: string; sha256: string; originalName: string; hasImages: boolean };
 export type PdfMetadata = { sha256: string; size: number; origin: 'uploaded' | 'example' };
 
 export type PatientInput = z.input<typeof patientSchema>;
@@ -111,6 +123,7 @@ export type InternalDocument = { id: string; patientId: string; name: string; de
 export type PatientDetail = {
   patient: Patient; consultations: Consultation[]; publications: Publication[]; documents: InternalDocument[];
   generalIndication: Publication | null;
+  importedIndications: ImportedIndication[];
 };
 export type SessionInfo = { expiresAt: number; role: 'doctor' | 'patient' };
 export type PatientSessionInfo = SessionInfo & { patient: { firstName: string; lastName: string } };
@@ -163,4 +176,26 @@ export function consultationChain(all: Consultation[], consultation: Consultatio
 
 export function displayMoment(value: number) {
   return new Intl.DateTimeFormat('es-AR', { dateStyle: 'long', timeStyle: 'short', timeZone: 'America/Argentina/La_Rioja' }).format(new Date(value));
+}
+
+export type IndicationHistoryEntry = { source: 'publication'; value: Publication } | { source: 'import'; value: ImportedIndication };
+
+// Las importadas nunca son publicaciones: conservan una fecha documental sin
+// inventar una hora. Las de fecha desconocida van al final, no al día de carga.
+export function indicationHistory(detail: Pick<PatientDetail, 'publications' | 'importedIndications'>): IndicationHistoryEntry[] {
+  const entries: IndicationHistoryEntry[] = [
+    ...detail.publications.filter(item => item.kind === 'indication' && item.scope === 'patient')
+      .map(value => ({ source: 'publication' as const, value })),
+    ...detail.importedIndications.map(value => ({ source: 'import' as const, value })),
+  ];
+  const date = (entry: IndicationHistoryEntry) => entry.source === 'publication' ? today(entry.value.publishedAt) : entry.value.documentDate ?? '';
+  return entries.sort((a, b) => date(b).localeCompare(date(a))
+    || (a.source === 'publication' && b.source === 'publication' ? b.value.publishedAt - a.value.publishedAt || Number(b.value.active) - Number(a.value.active)
+      : a.source !== b.source ? (a.source === 'publication' ? -1 : 1) : 0)
+    || b.value.id.localeCompare(a.value.id));
+}
+
+export function indicationHistoryDate(entry: IndicationHistoryEntry) {
+  return entry.source === 'publication' ? displayMoment(entry.value.publishedAt)
+    : entry.value.documentDate ? displayDate(entry.value.documentDate) : 'Fecha del documento desconocida';
 }

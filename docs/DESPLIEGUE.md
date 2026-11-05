@@ -46,7 +46,7 @@ npx wrangler d1 migrations apply dranallim --remote
 Es aditivo y reversible sólo por edición manual del esquema; no borra datos. Al
 confirmar, revisar que liste `0001_persistencia_inicial.sql` y
 `0002_acceso_profesional.sql`, `0003_acceso_medica_codigo.sql` y
-`0004_perimetro_abdominal.sql`.
+`0004_perimetro_abdominal.sql` y `0005_indicaciones_importadas.sql`.
 
 ### Incidente de ingreso, 23/10/2026
 
@@ -114,6 +114,30 @@ desplegar después (a cargo del usuario). Desplegar sólo el Worker sin reconstr
 Si faltaba `sessions`, un código válido se consumía antes de fallar al crear la
 sesión (500); reusarlo devolvía 401. Después de reparar, pedir **un nuevo código**,
 respetando el cooldown. No borrar desafíos ni límites para diagnosticar.
+
+### Historial de indicaciones importadas, 5/11/2026
+
+Antes de desplegar este cambio, el usuario debe revisar y aplicar sólo la
+migración nueva a la base existente (no reejecutar el esquema inicial):
+
+```bash
+npx wrangler d1 execute dranallim --remote --file=db/migrations/0005_indicaciones_importadas.sql
+npm run build
+npx wrangler deploy
+```
+
+Crea `imported_indications` y un índice, sin borrar ni modificar publicaciones.
+Aplicarla **antes** del Worker: la ficha y el cómputo de archivos necesitan esa
+tabla. Para volver al Worker anterior se puede conservar la tabla y sus datos;
+no borrarla como parte de una reversión. No cambiar manualmente `d1_migrations`
+para ocultar diferencias del esquema remoto.
+
+Probar primero con un Word ficticio: vista previa sin guardar, importación como
+histórica, original descargable sólo por la médica, duplicado rechazado y sin
+cambios en el portal del paciente. La revisión legal, respaldo/restauración y
+condiciones de operación de datos reales siguen siendo requisitos separados.
+No se cargaron al servidor los ejemplos del disco local. La lectura local de los
+14 `.docx` de ejemplo fue correcta; no se subieron ni se incorporaron al repositorio.
 
 ## 3. Cargar variables y secretos
 

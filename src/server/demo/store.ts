@@ -1,4 +1,4 @@
-import { today, type Consultation, type InternalDocument, type Patient, type Publication } from '../../shared/contracts';
+import { today, type Consultation, type ImportedIndication, type InternalDocument, type Patient, type Publication } from '../../shared/contracts';
 import type { OutgoingEmail } from '../email/port';
 import type { AccessChallenge, AccessLink, AccessSession, AuditEvent } from '../storage/port';
 
@@ -34,6 +34,7 @@ export function createStore(now: number) {
       description: 'Referencia visual de un Word histórico. No hay un archivo real cargado.',
     }]]),
     files: new Map<string, Uint8Array<ArrayBuffer>>(),
+    importedIndications: new Map<string, ImportedIndication>(),
     sessions: new Map<string, AccessSession>(),
     challenges: new Map<string, AccessChallenge>(),
     codeRequests: new Map<string, number>(),

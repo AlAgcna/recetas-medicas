@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { ArrowLeft, ArrowRight, Check, ChevronRight, ClipboardList, FileText, LockKeyhole, Plus, Search, ShieldCheck, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ChevronRight, ClipboardList, FileText, FileUp, LockKeyhole, Plus, Search, ShieldCheck, Users } from 'lucide-react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { displayDate, displayDni, displayMoment, patientSchema, type Patient, type PatientDetail, type PatientInput } from '../shared/contracts';
+import { displayDate, displayDni, displayMoment, indicationHistory, indicationHistoryDate, patientSchema, type Patient, type PatientDetail, type PatientInput } from '../shared/contracts';
 import { insuranceKey, insuranceLabel, insuranceOptions } from '../shared/insurance';
 import { InsuranceSelect } from './InsuranceSelect';
 import { PdfIntegrity } from './PdfIntegrity';
@@ -131,8 +131,8 @@ export function PatientForm() {
 export function PatientDetailPage() {
   const { id } = useParams();
   const { detail, error } = usePatientDetail(id);
-  const [tab, setTab] = useState<'consultations' | 'documents' | 'publications'>('consultations');
   const location = useLocation();
+  const [tab, setTab] = useState<'consultations' | 'documents' | 'publications'>(() => location.state?.tab === 'publications' ? 'publications' : 'consultations');
   if (error) return <Alert>{error}</Alert>;
   if (!detail) return <Loading />;
   const { patient, documents, publications, generalIndication } = detail;
@@ -140,8 +140,7 @@ export function PatientDetailPage() {
   // reemplazadas por una enmienda viven en el historial de la consulta.
   const consultations = detail.consultations.filter(item => !item.supersededAt);
   const currentPublications = publications.filter(item => item.active);
-  const indications = publications.filter(item => item.kind === 'indication' && item.scope === 'patient')
-    .sort((a, b) => b.publishedAt - a.publishedAt || Number(b.active) - Number(a.active) || b.id.localeCompare(a.id));
+  const indications = indicationHistory(detail);
   const prescriptions = currentPublications.filter(item => item.kind === 'prescription');
   return <>
     <Link className="back-link" to="/profesional"><ArrowLeft size={18} /> Volver a pacientes</Link>
@@ -150,7 +149,7 @@ export function PatientDetailPage() {
     <section className="card patient-summary"><div><span className="field-caption">WHATSAPP</span><strong>{patient.whatsapp}</strong><Badge tone={patient.contactVerified ? 'green' : 'amber'}>{patient.contactVerified ? 'Contacto verificado (simulado)' : 'Pendiente de verificación'}</Badge></div><div><span className="field-caption">OBRA SOCIAL</span><strong>{insuranceLabel(patient.insurance)}</strong><span>Afiliado: {patient.memberNumber || 'No corresponde / sin registrar'}</span></div><Link className="text-link" to={`/profesional/pacientes/${id}/datos`}>Completar datos <ChevronRight size={18} /></Link></section>
     {(!patient.firstName || !patient.lastName) && <Alert>La ficha está incompleta. Completá nombre y apellido antes de finalizar una consulta.</Alert>}
     <div className="tabs" role="tablist" aria-label="Secciones de la ficha">
-      {([['consultations', 'Consultas', consultations.length], ['documents', 'Documentos internos', documents.length], ['publications', 'Indicaciones y Recetas', currentPublications.length + (generalIndication ? 1 : 0)]] as const).map(([value, label, count]) => <button key={value} role="tab" id={`tab-${value}`} tabIndex={tab === value ? 0 : -1} aria-selected={tab === value} aria-controls={`panel-${value}`} onClick={() => setTab(value)} onKeyDown={event => {
+      {([['consultations', 'Consultas', consultations.length], ['documents', 'Documentos internos', documents.length], ['publications', 'Indicaciones y Recetas', indications.length + prescriptions.length + (generalIndication ? 1 : 0)]] as const).map(([value, label, count]) => <button key={value} role="tab" id={`tab-${value}`} tabIndex={tab === value ? 0 : -1} aria-selected={tab === value} aria-controls={`panel-${value}`} onClick={() => setTab(value)} onKeyDown={event => {
         const options = ['consultations', 'documents', 'publications'] as const;
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
@@ -162,7 +161,7 @@ export function PatientDetailPage() {
     </div>
     <section role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
       {tab === 'consultations' && <><div className="section-heading"><h2>Registro de consultas</h2><Badge><LockKeyhole size={14} /> Uso profesional</Badge></div>{consultations.length ? <div className="consultation-list">{consultations.map(consultation => <Link className="card consultation-row" key={consultation.id} to={`/profesional/pacientes/${id}/consultas/${consultation.id}`}><span className="document-symbol"><ClipboardList /></span><div><div className="inline-heading"><h3>{displayDate(consultation.date)}</h3><Badge tone={consultation.status === 'finalized' ? 'green' : 'amber'}>{consultation.status === 'finalized' ? 'Finalizada' : 'Borrador'}</Badge>{consultation.supersedesId && <Badge tone="amber">Enmendada</Badge>}</div><p>{consultation.reason || 'Consulta sin motivo registrado todavía.'}</p></div><ChevronRight size={22} /></Link>)}</div> : <div className="empty-state"><ClipboardList size={32} /><h3>Todavía no hay consultas</h3><p>Empezá el registro de atención de este paciente.</p><Link className="button primary" to={`/profesional/pacientes/${id}/consultas/nueva`}>Nueva consulta</Link></div>}</>}
-      {tab === 'documents' && <><div className="section-heading"><h2>Antecedentes y estudios</h2><Badge><LockKeyhole size={14} /> No visibles en el portal</Badge></div>{documents.map(document => <article className="card document-card" key={document.id}><FileText size={27} /><div><h3>{document.name}</h3><p>{document.description}</p><span className="helper-text">Ejemplo visual, sin descarga ni carga de archivos reales en esta etapa.</span></div></article>)}{!documents.length && <div className="empty-state"><FileText size={32} /><h3>Sin documentos de ejemplo</h3><p>La importación de Word y estudios se incorporará después del prototipo.</p></div>}</>}
+      {tab === 'documents' && <><div className="section-heading"><h2>Antecedentes y estudios</h2><Badge><LockKeyhole size={14} /> No visibles en el portal</Badge></div>{documents.map(document => <article className="card document-card" key={document.id}><FileText size={27} /><div><h3>{document.name}</h3><p>{document.description}</p><span className="helper-text">Ejemplo visual, sin descarga ni carga de archivos reales en esta etapa.</span></div></article>)}{!documents.length && <div className="empty-state"><FileText size={32} /><h3>Sin documentos de ejemplo</h3><p>La carga de estudios y otros documentos internos se incorporará más adelante. Las indicaciones antiguas en Word ya se importan desde «Indicaciones y Recetas».</p></div>}</>}
       {tab === 'publications' && <>
         <div className="section-heading"><h2>Indicaciones y Recetas</h2><Link className="button primary" to={`/profesional/pacientes/${id}/entrega`}><Plus size={19} /> Añadir Indicación/Receta</Link></div>
         <div className="quiet-note"><ShieldCheck size={20} /><p>Como máximo, una indicación general y una específica activas. Las recetas van por separado. Las indicaciones reemplazadas se conservan en el historial.</p></div>
@@ -170,14 +169,17 @@ export function PatientDetailPage() {
           <summary><span className="publication-summary-text"><Badge tone="green">Indicación general · Para todos</Badge><strong>{generalIndication?.title ?? 'Todavía no hay una indicación general'}</strong>{generalIndication && <time dateTime={new Date(generalIndication.publishedAt).toISOString()}>{displayMoment(generalIndication.publishedAt)}</time>}</span><ChevronRight size={22} aria-hidden="true" /></summary>
           <div className="publication-disclosure-content">{generalIndication && <><p className="preserve-lines">{generalIndication.content}</p><IndicationSignature /></>}<Link className="text-link" to="/profesional/indicacion-general">Gestionar indicación general <ChevronRight size={18} /></Link></div>
         </details>
-        <div className="section-heading"><h2>Indicaciones del paciente</h2><span>{indications.length} {indications.length === 1 ? 'versión' : 'versiones'}</span></div>
-        <p className="section-description">De más reciente a más antigua. Abrí una fecha para ver el tratamiento de ese momento. Solo la vigente es visible para el paciente.</p>
-        {indications.length ? <ol className="indication-timeline" aria-label="Evolución de indicaciones">{indications.map(publication => <li key={publication.id}>
-          <details className="card publication-disclosure">
-            <summary><span className="publication-summary-text"><time dateTime={new Date(publication.publishedAt).toISOString()}>{displayMoment(publication.publishedAt)}</time><strong>{publication.title}</strong><Badge tone={publication.active ? 'green' : 'neutral'}>{publication.active ? 'Vigente · Visible en el portal' : 'Histórica · No visible en el portal'}</Badge></span><ChevronRight size={22} aria-hidden="true" /></summary>
-            <div className="publication-disclosure-content"><p className="preserve-lines">{publication.content}</p>{publication.supersededAt !== undefined && <span className="helper-text">Reemplazada el {displayMoment(publication.supersededAt)}</span>}<IndicationSignature /></div>
-          </details>
-        </li>)}</ol> : <div className="empty-state"><FileText size={32} /><h3>Todavía no hay indicaciones para este paciente</h3><p>Las consultas internas no se comparten automáticamente.</p></div>}
+        <div className="section-heading"><h2>Indicaciones del paciente</h2><Link className="button secondary" to={`/profesional/pacientes/${id}/indicaciones/importar`}><FileUp size={19} /> Importar indicación desde Word</Link></div>
+        <p className="section-description">{indications.length} {indications.length === 1 ? 'versión' : 'versiones'}. De más reciente a más antigua; las de fecha desconocida van al final. Abrí una fecha para ver el tratamiento de ese momento. Solo la vigente es visible para el paciente.</p>
+        {indications.length ? <ol className="indication-timeline" aria-label="Evolución de indicaciones">{indications.map(entry => {
+          const item = entry.value;
+          const active = entry.source === 'publication' && entry.value.active;
+          const dateTime = entry.source === 'publication' ? new Date(entry.value.publishedAt).toISOString() : entry.value.documentDate ?? undefined;
+          return <li key={item.id}><details className="card publication-disclosure">
+            <summary><span className="publication-summary-text">{dateTime ? <time dateTime={dateTime}>{indicationHistoryDate(entry)}</time> : <span className="helper-text">{indicationHistoryDate(entry)}</span>}<strong>{item.title}</strong><Badge tone={active ? 'green' : 'neutral'}>{active ? 'Vigente · Visible en el portal' : entry.source === 'import' ? 'Histórica importada · No visible en el portal' : 'Histórica · No visible en el portal'}</Badge></span><ChevronRight size={22} aria-hidden="true" /></summary>
+            <div className="publication-disclosure-content"><p className="preserve-lines">{item.content}</p>{entry.source === 'publication' ? <>{entry.value.supersededAt !== undefined && <span className="helper-text">Reemplazada el {displayMoment(entry.value.supersededAt)}</span>}<IndicationSignature /></> : <><p className="helper-text preserve-lines">Original: {entry.value.originalName}<br />Importada el {displayMoment(entry.value.importedAt)}. Texto revisado por la médica; no publicada.</p><a className="button secondary indication-download" href={`/api/doctor/patients/${id}/indication-imports/${item.id}/original`}>Descargar Word original</a></>}</div>
+          </details></li>;
+        })}</ol> : <div className="empty-state"><FileText size={32} /><h3>Todavía no hay indicaciones para este paciente</h3><p>Las consultas internas no se comparten automáticamente.</p></div>}
         <div className="section-heading"><h2>Recetas PDF</h2><span>{prescriptions.length} {prescriptions.length === 1 ? 'receta' : 'recetas'}</span></div>
         {prescriptions.map(publication => <article className="card publication-card" key={publication.id}><div className="inline-heading"><h3>{publication.title}</h3><Badge tone="green">Receta publicada</Badge></div><time className="helper-text" dateTime={new Date(publication.publishedAt).toISOString()}>{displayMoment(publication.publishedAt)}</time><p className="preserve-lines">{publication.content}</p><span className="helper-text">Archivo PDF conservado sin modificaciones por el portal</span><a className="button secondary indication-download" href={`/api/doctor/patients/${id}/prescriptions/${publication.id}/download`}>Descargar PDF original</a>{publication.pdf && <PdfIntegrity pdf={publication.pdf} />}</article>)}
         {!prescriptions.length && <p className="section-description">Todavía no hay recetas PDF publicadas para este paciente.</p>}

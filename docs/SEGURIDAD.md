@@ -232,6 +232,19 @@ definir expiración, validación estricta y revocación sin incluir datos clíni
   antes de aceptar documentos reales.
 - No ejecutar archivos Word, macros o scripts. Tratar PDF y adjuntos como
   contenido no confiable al decidir vista previa o descarga.
+- Importación histórica de indicaciones (5/11/2026): sólo `.docx` hasta 5 MB.
+  Se acota el multipart real antes de deserializar y el contenedor a 512 entradas,
+  24 MB declarados descomprimidos y 1 MB por XML leído. Sólo se extraen XML de
+  documento, tipos y relaciones; las imágenes no se renderizan ni descomprimen.
+  Se rechazan macros, objetos incrustados, relaciones externas, DTD/entidades,
+  revisiones pendientes y texto vacío o de más de 5000 caracteres. No se sigue
+  ningún vínculo ni se ejecuta Word. Esto no equivale a un antivirus: el original
+  descargado sigue siendo un adjunto no confiable.
+- La vista previa es transitoria y no persiste archivos. Confirmar exige revisar
+  paciente/texto/fecha y conservar el hash del Word revisado. El historial
+  importado queda fuera de `publications`, sin ruta de activación ni acceso para
+  pacientes. La descarga profesional verifica propietario, sesión e integridad.
+  El registro y archivo usan IDs opacos; auditoría sin nombre ni contenido.
 - Usar nombres y claves de almacenamiento opacos sin DNI o diagnósticos en URLs.
 - Secretos únicamente en el gestor de secretos/configuración del servidor,
   nunca en variables públicas de Vite, capturas o archivos versionados.

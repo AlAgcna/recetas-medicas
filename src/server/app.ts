@@ -4,10 +4,12 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
 import {
   amendmentRequestSchema, consultationSchema, dniSchema, generalIndicationSchema, monthSchema, patientProjection,
-  patientSchema, pdfPolicy, policy, publicationRequestSchema, publicationSchema, today,
+  indicationImportPolicy, indicationImportSchema, patientSchema, pdfPolicy, policy, publicationRequestSchema, publicationSchema, today,
   type Consultation, type Patient, type Publication,
 } from '../shared/contracts';
 import { PdfInputError, pdfFromFile, prescriptionForm, sha256 } from './prescription-pdf';
+import { FileInputError, readFileForm } from './file-input';
+import { readIndicationDocx } from './indication-docx';
 import type { SendEmail } from './email/port';
 import { monthlyStatistics } from './statistics';
 import { StorageConflict, type AccessSession, type Storage } from './storage/port';
@@ -138,7 +140,7 @@ export function createApp(options: AppOptions) {
   const jsonBodyLimit = bodyLimit({ maxSize: 32 * 1024, onError: (c: Context) => c.json({ message: 'El contenido supera el tamaño permitido.' }, 413) });
   app.use('*', async (c, next) => {
     // El multipart tiene su propio lector acotado, después de autenticar.
-    if (c.req.method === 'POST' && /^\/api\/doctor\/patients\/[^/]+\/prescriptions$/.test(c.req.path)) return next();
+    if (c.req.method === 'POST' && /^\/api\/doctor\/patients\/[^/]+\/(?:prescriptions|indication-imports(?:\/preview)?)$/.test(c.req.path)) return next();
     return jsonBodyLimit(c, next);
   });
   app.onError(caught => {
@@ -340,6 +342,55 @@ export function createApp(options: AppOptions) {
     return c.json({ publication: result.publication }, 201);
   });
 
+  async function importIndication(c: Context<PortalEnv>, previewOnly: boolean) {
+    const patientId = c.req.param('id')!;
+    if (!await storage.getPatient(patientId)) return c.json({ message: 'No se encontró la ficha.' }, 404);
+    try {
+      const form = await readFileForm(c.req.raw, indicationImportPolicy.maxFormBytes);
+      const keys = previewOnly ? ['word'] : ['word', 'metadata'];
+      if ([...form.keys()].some(key => !keys.includes(key)) || keys.some(key => form.getAll(key).length !== 1)) throw new FileInputError('El formulario tiene campos inválidos o duplicados.');
+      const file = form.get('word');
+      if (!(file instanceof File)) throw new FileInputError('Adjuntá el Word original de la indicación.');
+      const { original, preview } = await readIndicationDocx(file);
+      if (!await stillAuthenticated(c)) return c.json({ message: 'Tu sesión terminó. Volvé a ingresar.' }, 401);
+      if (previewOnly) { await activity(c); return c.json(preview); }
+      let metadata: unknown;
+      try { metadata = JSON.parse(String(form.get('metadata'))); }
+      catch { throw new FileInputError('No se pudo leer la revisión de la indicación.'); }
+      const parsed = indicationImportSchema.safeParse(metadata);
+      if (!parsed.success) throw new FileInputError(parsed.error.issues[0]?.message ?? 'Revisá los datos de importación.');
+      const { title, content, documentDate, sourceSha256 } = parsed.data;
+      if (sourceSha256 !== original.sha256) throw new FileInputError('El Word cambió después de la vista previa. Volvé a revisarlo.');
+      if (documentDate && documentDate > today(now())) throw new FileInputError('La fecha de una indicación histórica no puede ser futura.');
+      if (await storage.totalStoredBytes() + original.size > pdfPolicy.maxStoredBytes) throw new FileInputError('Se alcanzó el límite de almacenamiento de archivos configurado.', 413);
+      if (!await stillAuthenticated(c)) return c.json({ message: 'Tu sesión terminó. Volvé a ingresar.' }, 401);
+      // No pasa por publish(): no toca la activa, los contactos ni estadísticas.
+      const imported = await storage.importIndication({ title, content, documentDate }, patientId, original, now());
+      if (!imported) return c.json({ message: 'Este Word ya está importado en el historial de este paciente.' }, 409);
+      await activity(c);
+      await audit('doctor', 'indication.imported', imported.id);
+      return c.json({ importedIndication: imported }, 201);
+    } catch (error) {
+      if (error instanceof FileInputError) return c.json({ message: error.message }, error.status);
+      throw error;
+    }
+  }
+  app.post('/api/doctor/patients/:id/indication-imports/preview', c => importIndication(c, true));
+  app.post('/api/doctor/patients/:id/indication-imports', c => importIndication(c, false));
+  app.get('/api/doctor/patients/:id/indication-imports/:importId/original', async c => {
+    const imported = await storage.getImportedIndication(c.req.param('importId'));
+    if (!imported || imported.patientId !== c.req.param('id')) return c.json({ message: 'Documento no disponible.' }, 404);
+    const bytes = await storage.getIndicationOriginal(imported.id);
+    if (!bytes || bytes.length !== imported.size || await sha256(bytes) !== imported.sha256) return c.json({ message: 'El Word original no está disponible o no pudo verificarse.' }, 503);
+    if (!await stillAuthenticated(c)) return c.json({ message: 'Tu sesión terminó. Volvé a ingresar.' }, 401);
+    await activity(c);
+    await audit('doctor', 'indication-original.downloaded', imported.id);
+    c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    c.header('Content-Disposition', 'attachment; filename="indicacion-original.docx"');
+    c.header('Content-Length', String(bytes.length));
+    return c.body(bytes.buffer);
+  });
+
   app.post('/api/doctor/patients/:id/prescriptions', async c => {
     const patientId = c.req.param('id');
     if (!await storage.getPatient(patientId)) return c.json({ message: 'No se encontró la ficha.' }, 404);
@@ -411,6 +462,7 @@ export function createApp(options: AppOptions) {
       publications: await storage.listPublicationsByPatient(id),
       generalIndication: await storage.getActiveIndication(null) ?? null,
       documents: await storage.listDocumentsByPatient(id),
+      importedIndications: await storage.listImportedIndications(id),
     });
   });
 

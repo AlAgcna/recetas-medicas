@@ -20,6 +20,22 @@ sigue pendiente. No convierte propuestas en requisitos confirmados.
 
 ## 1. Alcance de esta etapa
 
+### Ampliación del 5/11/2026: indicaciones importadas
+
+`0005_indicaciones_importadas.sql` crea una tabla interna separada de publicaciones
+para las indicaciones históricas importadas. Guarda paciente, título, texto
+revisado, fecha documental nullable, fecha de carga y metadatos del Word original.
+No usa `published_at` ni inventa una hora para una fecha documental.
+
+La unicidad `(patient_id, sha256)` evita duplicados concurrentes. El adaptador
+guarda el original en R2 bajo una clave opaca antes del INSERT; ante conflicto o
+fallo elimina solamente el objeto recién creado, nunca el original ya registrado.
+El total de bytes almacenados incluye estos Word junto a los PDF. Listado y
+descarga son exclusivos de la médica; no cambian la indicación activa, las
+sesiones del paciente, los contactos ni las estadísticas de consultas/recetas.
+
+El agente no aplicó esta migración remota ni cargó los ejemplos reales.
+
 Existe y está probado con datos ficticios:
 
 - `db/migrations/0001_persistencia_inicial.sql`: esquema D1 (SQLite) revisado a

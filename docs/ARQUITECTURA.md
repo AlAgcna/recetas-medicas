@@ -153,6 +153,23 @@ sigue no es un esquema definitivo: estas son las responsabilidades acordadas.
   reales; el adaptador de D1 ya conserva ese historial y sus invariantes
   (`PERSISTENCIA.md`).
 
+### Historial de indicaciones importadas (5/11/2026)
+
+- `imported_indications` conserva texto revisado, fecha documental nullable y
+  evidencia de origen (`.docx` privado en R2, nombre, SHA-256, tamaño y carga).
+  Es una entidad interna, no una fila de `publications`: no tiene estado activo
+  ni una fecha de publicación inventada y no puede entrar a la proyección del paciente.
+- El puerto de almacenamiento agrega importar/listar/leer original; memoria y
+  D1/R2 comparten la semántica. D1 sostiene unicidad por paciente + hash.
+- El servidor autentica antes de leer multipart. La vista previa no persiste.
+  Al confirmar vuelve a validar el Word y compara su hash con el revisado.
+- `fflate` lee el contenedor ZIP con límites; `saxes` procesa XML sin DOM ni
+  ejecución de Word. Se rechazan macros, objetos incrustados, enlaces externos,
+  entidades XML, revisiones pendientes y archivos excesivos. Son dependencias
+  pequeñas y compatibles con Workers, sin servicios de IA ni conversión remota.
+- La vista profesional combina las publicadas y las importadas por su fecha;
+  los listados y descargas del paciente siguen consultando sólo publicaciones.
+
 ### Enmiendas de consultas
 
 - Una consulta finalizada nunca se sobrescribe: la enmienda crea la versión

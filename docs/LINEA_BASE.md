@@ -243,10 +243,36 @@ el mensaje no lleva datos clínicos.
 - Mantenerlos internos salvo un flujo explícito de entrega autorizado.
 - Propuesta inicial: adjuntar una copia PDF para lectura web cómoda; no asumir
   conversión automática ni edición de Word dentro del navegador.
-- La transcripción masiva, OCR y extracción automática no forman parte del
-  alcance inicial. Cualquier texto extraído en el futuro requerirá revisión.
+- La transcripción masiva y el OCR no forman parte del alcance inicial. La
+  extracción acotada de texto para indicaciones (4.5) siempre requiere revisión.
 - La importación no habilita contactos históricos sin verificarlos ni debe
   disparar mensajes automáticamente.
+
+**Decisión del 5/11/2026: las indicaciones antiguas importadas forman parte del
+historial de indicaciones del paciente.** No son publicaciones ni reemplazos de
+la vigente. Se implementa un primer flujo acotado, por archivo:
+
+- En la ficha, «Indicaciones y Recetas» → «Importar indicación desde Word».
+- Admite `.docx` hasta 5 MB y extrae hasta 5000 caracteres como texto, sin IA,
+  ejecución de Word, macros, descarga de vínculos externos ni OCR. Esta lectura
+  puntual con revisión reemplaza, para estas indicaciones, el pendiente de
+  extracción del párrafo anterior. No habilita migración masiva ni lectura de
+  historias completas en campos de consulta.
+- La médica revisa paciente, título, texto y fecha documental. No se deduce la
+  fecha desde el nombre, nacimiento o fecha de modificación del archivo. Si no
+  se conoce, se registra explícitamente como desconocida, sin inventar una hora.
+- Tras vista previa y confirmación, se conserva el `.docx` original, su nombre,
+  SHA-256, tamaño y momento de carga, junto con el texto revisado. Las imágenes y
+  firmas se conservan en el original; no se reemplazan por la firma actual.
+- Las importadas aparecen junto a las versiones publicadas en la evolución,
+  ordenadas por fecha documental. Las de fecha desconocida van al final. Su
+  etiqueta es «Histórica importada · No visible en el portal».
+- Se permite usar su texto como base para una nueva indicación; recién el flujo
+  habitual de publicación puede hacer visible esa copia. Importar nunca publica.
+- El mismo original (SHA-256) no se agrega dos veces a una ficha, incluso con
+  solicitudes concurrentes. La importación no crea consultas ni suma recetas.
+- PDF, Word `.doc`, documentos sólo con imágenes y accesos directos `.lnk` quedan
+  fuera de este primer flujo. No se importan archivos reales por iniciativa del agente.
 
 ### 4.6 Estadísticas mensuales profesionales
 
@@ -444,8 +470,10 @@ contenido escrito y sin reemplazar los controles del servidor.
    coexistencia y costos; pruebas no equivalen a habilitación definitiva.
 6. Máximo absoluto profesional, gestión de sesiones simultáneas y políticas
    precisas de publicación/retiro y obligatoriedad de campos clínicos.
-7. Formatos Word aceptados (`.doc`, `.docx`), tamaño máximo y tratamiento de
-   archivos con macros o contenido activo.
+7. Ampliación de la importación: `.doc`, PDF, OCR, archivos con sólo imágenes,
+   carga masiva y análisis antimalware/cuarentena antes de documentos reales.
+   El primer flujo `.docx` quedó definido en 4.5 (5 MB, sin macros ni contenido
+   activo, con revisión y original conservado).
 8. Conservación, respaldos independientes, objetivos de recuperación y
    procedimiento de entrega de historia clínica completa.
 9. Validación legal aplicable en Argentina y La Rioja, alojamiento y

@@ -128,6 +128,12 @@ tildes o mayúsculas y conserva coberturas anteriores al volver a editar la fich
   en otra lista, con su descarga. El portal del paciente no cambia: lee completas
   solo las indicaciones activas. El apartado general conserva su propio historial.
   No hay eliminación ni retiro manual implementados.
+- «Importar indicación desde Word» agrega indicaciones antiguas al mismo historial,
+  sin publicar ni reemplazar la activa. Admite un `.docx` de hasta 5 MB por vez:
+  leer, revisar texto y fecha (o marcar desconocida), ver la vista previa y confirmar
+  el paciente. Se conserva el original privado y se rechazan duplicados del mismo
+  archivo en una ficha. No usar los archivos reales para probar el prototipo.
+  PDF, `.doc`, OCR e importación por carpetas no están implementados.
 - La comparación de versión y sustitución son atómicas dentro de un proceso en
   memoria. En D1 se necesitarán garantías distribuidas y de unicidad equivalentes.
 

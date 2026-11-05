@@ -1,14 +1,9 @@
 import { pdfPolicy, type PdfMetadata } from '../shared/contracts';
+import { FileInputError, readFileForm, sha256 } from './file-input';
+export { sha256 } from './file-input';
 
 export type StoredPdf = { bytes: Uint8Array<ArrayBuffer>; metadata: Readonly<PdfMetadata> };
-export class PdfInputError extends Error {
-  constructor(message: string, public status: 400 | 413 = 400) { super(message); }
-}
-
-export async function sha256(bytes: Uint8Array<ArrayBuffer>) {
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
-  return Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
-}
+export class PdfInputError extends FileInputError {}
 
 export async function preservePdf(bytes: Uint8Array<ArrayBuffer>, origin: PdfMetadata['origin']): Promise<StoredPdf> {
   if (bytes.length > pdfPolicy.maxFileBytes) throw new PdfInputError('El PDF supera el máximo de 5 MB.', 413);
@@ -32,27 +27,10 @@ export async function pdfFromFile(file: File) {
 }
 
 export async function prescriptionForm(request: Request): Promise<FormData> {
-  const contentType = request.headers.get('Content-Type') ?? '';
-  if (!/^multipart\/form-data\s*;/i.test(contentType) || !request.body) throw new PdfInputError('Adjuntá el PDF mediante el formulario de recetas.');
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      // Medir los bytes reales, incluso si Content-Length es incorrecto o no existe.
-      if (total > pdfPolicy.maxFormBytes) {
-        await reader.cancel();
-        throw new PdfInputError('La carga supera el tamaño permitido.', 413);
-      }
-      chunks.push(value);
-    }
-  } finally { reader.releaseLock(); }
-  const data = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
-  try { return await new Response(data, { headers: { 'Content-Type': contentType } }).formData(); }
-  catch { throw new PdfInputError('No se pudo leer el formulario del PDF. Volvé a adjuntarlo.'); }
+    return await readFileForm(request, pdfPolicy.maxFormBytes);
+  } catch (error) {
+    if (error instanceof FileInputError) throw new PdfInputError(error.message, error.status);
+    throw error;
+  }
 }

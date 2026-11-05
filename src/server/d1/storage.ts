@@ -1,4 +1,4 @@
-import type { Consultation, InternalDocument, Patient, PdfMetadata, Publication } from '../../shared/contracts';
+import type { Consultation, ImportedIndication, InternalDocument, Patient, PdfMetadata, Publication } from '../../shared/contracts';
 import { StorageConflict, type AccessChallenge, type AccessSession, type DashboardStats, type PublicationResult, type Storage } from '../storage/port';
 import type { FileBucket, SqlDatabase, SqlResult, SqlValue } from './database';
 
@@ -82,6 +82,12 @@ function toPublication(row: Row): Publication {
     ...(nil(row.superseded_at) ? {} : { supersededAt: number(row.superseded_at) }),
     ...(pdf ? { pdf } : {}),
   };
+}
+
+function toImportedIndication(row: Row): ImportedIndication {
+  return { id: text(row.id), patientId: text(row.patient_id), title: text(row.title), content: text(row.content),
+    documentDate: nil(row.document_date) ? null : text(row.document_date), importedAt: number(row.imported_at),
+    originalName: text(row.original_name), sha256: text(row.sha256), size: number(row.size_bytes) };
 }
 
 // La Rioja, Argentina: UTC-3 todo el año, sin horario de verano. El mes clínico
@@ -317,6 +323,39 @@ export function createD1Storage(db: SqlDatabase, bucket: FileBucket): Storage {
         id: text(row.id), patientId: text(row.patient_id), name: text(row.name), description: text(row.description),
       })) satisfies InternalDocument[];
     },
+    async listImportedIndications(patientId) {
+      const { results } = await db.prepare('SELECT * FROM imported_indications WHERE patient_id = ? ORDER BY document_date DESC, imported_at DESC')
+        .bind(patientId).all<Row>();
+      return results.map(toImportedIndication);
+    },
+    async getImportedIndication(id) {
+      const row = await db.prepare('SELECT * FROM imported_indications WHERE id = ?').bind(id).first<Row>();
+      return row ? toImportedIndication(row) : undefined;
+    },
+    async importIndication(input, patientId, file, at) {
+      const id = crypto.randomUUID();
+      const key = `patients/${patientId}/indications/${id}.docx`;
+      await bucket.put(key, file.bytes);
+      let inserted;
+      try {
+        inserted = await db.prepare(`INSERT INTO imported_indications
+          (id, patient_id, title, content, document_date, imported_at, original_name, sha256, size_bytes, r2_key)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(patient_id, sha256) DO NOTHING RETURNING id`)
+          .bind(id, patientId, input.title, input.content, input.documentDate, at, file.originalName, file.sha256, file.size, key).first<Row>();
+      } catch (error) {
+        await bucket.delete(key).catch(() => undefined);
+        throw error;
+      }
+      if (!inserted) { await bucket.delete(key); return null; }
+      return { ...input, id, patientId, importedAt: at, originalName: file.originalName, sha256: file.sha256, size: file.size };
+    },
+    async getIndicationOriginal(id) {
+      const row = await db.prepare('SELECT r2_key FROM imported_indications WHERE id = ?').bind(id).first<Row>();
+      if (!row) return undefined;
+      const object = await bucket.get(text(row.r2_key));
+      return object ? new Uint8Array(await object.arrayBuffer()) : undefined;
+    },
 
     // ── Archivos de recetas (R2) ───────────────────────────────────────────────
     async getPublicationFile(publicationId) {
@@ -328,7 +367,9 @@ export function createD1Storage(db: SqlDatabase, bucket: FileBucket): Storage {
       return object ? new Uint8Array(await object.arrayBuffer()) : undefined;
     },
     async totalStoredBytes() {
-      const row = await db.prepare('SELECT coalesce(sum(size_bytes), 0) AS total FROM documents WHERE r2_key IS NOT NULL').first<Row>();
+      const row = await db.prepare(`SELECT
+        (SELECT coalesce(sum(size_bytes), 0) FROM documents WHERE r2_key IS NOT NULL)
+        + (SELECT coalesce(sum(size_bytes), 0) FROM imported_indications) AS total`).first<Row>();
       return number(row?.total);
     },
 

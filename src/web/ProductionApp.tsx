@@ -5,6 +5,7 @@ import { DoctorLogin, DoctorShell } from './DoctorShell';
 import { PatientDetailPage, PatientForm, PatientsPage } from './Patients';
 import { ConsultationPage } from './Consultation';
 import { GeneralIndicationPage, PublicationPage } from './Publication';
+import { ImportIndicationPage } from './ImportIndication';
 import { PatientLogin, PatientPortal } from './PatientPortal';
 import { StatisticsPage } from './Statistics';
 import { Brand } from './ui';
@@ -44,6 +45,7 @@ const router = createBrowserRouter(createRoutesFromElements(
         <Route path="pacientes/:id/consultas/nueva" element={<ConsultationPage />} />
         <Route path="pacientes/:id/consultas/:consultationId" element={<ConsultationPage />} />
         <Route path="pacientes/:id/entrega" element={<PublicationPage />} />
+        <Route path="pacientes/:id/indicaciones/importar" element={<ImportIndicationPage />} />
       </Route>
       <Route path="/pacientes/ingreso" element={<PatientLogin />} />
       <Route path="/pacientes" element={<PatientPortal />} />

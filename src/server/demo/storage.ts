@@ -105,6 +105,24 @@ export function createMemoryStorage(state: DemoStore): Storage {
     async listDocumentsByPatient(patientId) {
       return [...state.documents.values()].filter(item => item.patientId === patientId);
     },
+    async listImportedIndications(patientId) {
+      return [...state.importedIndications.values()].filter(item => item.patientId === patientId);
+    },
+    async getImportedIndication(id) {
+      return state.importedIndications.get(id);
+    },
+    async importIndication(input, patientId, file, at) {
+      if ([...state.importedIndications.values()].some(item => item.patientId === patientId && item.sha256 === file.sha256)) return null;
+      if (!state.patients.has(patientId)) throw new Error('Ficha inexistente');
+      const record = { ...input, id: crypto.randomUUID(), patientId, importedAt: at,
+        originalName: file.originalName, sha256: file.sha256, size: file.size };
+      state.importedIndications.set(record.id, record);
+      state.files.set(record.id, file.bytes.slice());
+      return record;
+    },
+    async getIndicationOriginal(id) {
+      return state.importedIndications.has(id) ? state.files.get(id)?.slice() : undefined;
+    },
 
     // ── Archivos de recetas ────────────────────────────────────────────────────
     async getPublicationFile(publicationId) {
